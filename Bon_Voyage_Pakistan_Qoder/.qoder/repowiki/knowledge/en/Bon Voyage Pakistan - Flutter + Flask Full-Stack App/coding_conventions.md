@@ -1,0 +1,2 @@
+- Each subproject maintains its own dependency manifest (`pubspec.yaml` for Flutter, requirements for Flask) rather than sharing a monorepo package registry.
+- Cross-process communication between the Flutter client and Flask backend is done exclusively via HTTP JSON requests carrying JWTs.

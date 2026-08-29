@@ -1,0 +1,1 @@
+Flask 3.1 with Flask-CORS for cross-origin requests, PyJWT 2.10 for HS256-signed stateless authentication tokens, Werkzeug password hashing, and an embedded SQLite file (`bon_voyage.db`) as the persistence layer.

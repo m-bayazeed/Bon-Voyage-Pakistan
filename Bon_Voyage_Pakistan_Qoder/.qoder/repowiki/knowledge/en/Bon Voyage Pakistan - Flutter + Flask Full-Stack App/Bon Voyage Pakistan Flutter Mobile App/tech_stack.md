@@ -1,0 +1,1 @@
+Flutter with Material 3 (`useMaterial3: true`) and the `PlusJakartaSans` font family; HTTP layer built on `package:http` with a 15-second per-request timeout; credentials stored securely via `flutter_secure_storage` using Android encrypted SharedPreferences; backend targets a Flask server at `http://192.168.100.12:5000` (configurable through `ApiConfig.baseUrl`).

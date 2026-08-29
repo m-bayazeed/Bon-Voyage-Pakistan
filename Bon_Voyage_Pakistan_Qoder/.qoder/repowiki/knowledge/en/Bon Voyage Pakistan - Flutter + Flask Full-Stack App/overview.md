@@ -1,0 +1,1 @@
+Top-level workspace that bundles the Flutter mobile client and its Flask authentication API into a single Bon Voyage Pakistan travel application.

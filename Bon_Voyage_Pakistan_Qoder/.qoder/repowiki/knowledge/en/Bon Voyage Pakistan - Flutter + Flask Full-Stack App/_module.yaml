@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: ""
+title: Bon Voyage Pakistan - Flutter + Flask Full-Stack App
+scope:
+    - README.md
+    - analysis_options.yaml
+    - pubspec.yaml
+    - pubspec.lock
+    - .gitignore
+source_files: []
+depends_on: []
+related_to: []

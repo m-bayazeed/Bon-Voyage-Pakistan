@@ -1,0 +1,1 @@
+Flutter multi-platform travel app providing user authentication, onboarding, and profile screens backed by a Flask REST API with secure JWT storage.

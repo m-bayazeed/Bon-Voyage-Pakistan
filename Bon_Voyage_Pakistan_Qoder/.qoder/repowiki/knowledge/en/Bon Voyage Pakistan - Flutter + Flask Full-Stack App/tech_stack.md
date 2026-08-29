@@ -1,0 +1,1 @@
+Flutter SDK ^3.13.0 with Dart on the client side (using `http`, `flutter_secure_storage`, `shared_preferences`) and Python/Flask with SQLite on the server side.

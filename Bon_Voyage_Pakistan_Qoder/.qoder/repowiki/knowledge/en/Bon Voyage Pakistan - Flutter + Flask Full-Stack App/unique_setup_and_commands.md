@@ -1,0 +1,1 @@
+Run the Flutter app from the root with standard Flutter commands (`flutter run`), and start the backend separately in its own directory using Flask's development server; there is no unified launch script at this level.

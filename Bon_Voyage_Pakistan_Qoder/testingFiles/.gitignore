@@ -1,0 +1,16 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Audio test outputs (optional temporary files)
+output_*.mp3
+text_test_*.mp3

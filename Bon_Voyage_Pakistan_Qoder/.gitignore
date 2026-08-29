@@ -1,0 +1,94 @@
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.*
+*.env
+backend/.env
+testingFiles/.env
+!.env.example
+!backend/.env.example
+!testingFiles/.env.example
+
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# ==========================================
+# Databases
+# ==========================================
+*.db
+*.sqlite3
+backend/bon_voyage.db
+
+# ==========================================
+# Jupyter Notebooks
+# ==========================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ==========================================
+# Miscellaneous & OS
+# ==========================================
+*.class
+*.log
+*.swp
+*~
+.DS_Store
+Thumbs.db
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# ==========================================
+# IDEs & Editors
+# ==========================================
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# ==========================================
+# Flutter / Dart / Pub
+# ==========================================
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# Android Studio / Xcode build artifacts
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview
+.widget_preview/

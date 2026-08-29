@@ -1,0 +1,1 @@
+Flask-based REST API providing user signup, login, JWT-authenticated profile access, and logout backed by a local SQLite database.

@@ -1,0 +1,1 @@
+The backend URL defaults to `http://192.168.100.12:5000`; for Android emulator access to a host Flask server it should be changed to `http://10.0.2.2:5000` as documented in `api_config.dart`. No custom Gradle or build scripts beyond the default Flutter toolchain.

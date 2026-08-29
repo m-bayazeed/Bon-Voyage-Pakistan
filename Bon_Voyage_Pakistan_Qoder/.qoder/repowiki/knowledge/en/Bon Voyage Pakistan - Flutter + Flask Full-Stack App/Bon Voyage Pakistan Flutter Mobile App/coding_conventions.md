@@ -1,0 +1,5 @@
+- Network calls use `http.post/get` chained with `.timeout(Duration(seconds: 15))` and catch `TimeoutException`, `http.ClientException`, and a generic fallback to return a uniform `{success: false, message: ...}` map.
+- All persistent secrets (JWT token, name, email) are read/written through static helpers on `AuthService` backed by a single shared `FlutterSecureStorage` instance rather than direct storage calls scattered across screens.
+- Domain models are immutable value objects exposing both a constructor and `fromJson`/`toJson` factories, used consistently for deserializing backend responses.
+- Theming is centralized in a static `AppTheme` class that exposes `light()` and `dark()` `ThemeData` builders selecting from named palette constants instead of inline colors.
+- Feature screens are placed one-per-file under `lib/screens/` and imported directly by `main.dart` or other screens, with no routing library — navigation is done via `Navigator.push`/`pop`.

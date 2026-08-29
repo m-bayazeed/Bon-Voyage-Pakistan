@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: flutter_app
+title: Bon Voyage Pakistan Flutter Mobile App
+scope:
+    - lib/
+    - android/
+    - ios/
+    - linux/
+    - macos/
+    - web/
+    - windows/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_api

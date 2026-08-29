@@ -1,0 +1,5 @@
+- All JSON responses follow a uniform shape of `{success: bool, message: string, ...}` with appropriate HTTP status codes (201 for creation, 400/401/409 for errors).
+- Database access goes exclusively through `database.py` helper functions; route handlers never open `sqlite3` connections directly.
+- Sensitive fields (password hashes) are stripped from responses via the `user_to_dict` helper before being serialized to JSON.
+- Protected routes use the `@token_required` decorator rather than inline token-checking logic inside each handler.
+- Configuration values are read from environment variables via `os.getenv` with safe defaults, loaded at import time by `load_dotenv()`.

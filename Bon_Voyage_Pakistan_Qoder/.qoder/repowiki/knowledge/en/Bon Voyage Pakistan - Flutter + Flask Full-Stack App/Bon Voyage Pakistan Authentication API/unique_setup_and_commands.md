@@ -1,0 +1,1 @@
+Run the server directly with `python app.py` from the `backend/` directory; it auto-initializes the SQLite schema on startup and listens on `0.0.0.0:5000` in debug mode. End-to-end smoke tests are executed via `python test_api.py`, which targets a hard-coded host `http://192.168.100.12:5000`.
