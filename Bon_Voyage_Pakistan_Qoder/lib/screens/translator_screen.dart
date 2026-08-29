@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/translation_model.dart';
 import '../services/translation_history_service.dart';
 import '../services/translation_service.dart';
+import '../services/translator_audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/theme_toggle.dart';
@@ -15,7 +16,7 @@ class TranslatorScreen extends StatefulWidget {
   const TranslatorScreen({
     super.key,
     this.initialText,
-    this.initialSourceCode = 'en',
+    this.initialSourceCode = 'auto',
     this.initialTargetCode = 'ur',
   });
 
@@ -32,14 +33,19 @@ class _TranslatorScreenState extends State<TranslatorScreen>
   // Controllers
   final TextEditingController _inputController = TextEditingController();
 
+  // Audio controller
+  final TranslatorAudioHandler _audioHandler = TranslatorAudioHandler();
+  String _currentAudioBase64 = '';
+
   // Translation State
   String _translatedText = 'ٹائپ کریں یا بولیں...';
   String _romanizedPronunciation = 'Type karein ya bolein...';
+  String _sourceRomanizedPronunciation = '';
+  String _detectedLanguage = '';
   bool _isTranslating = false;
   bool _isListening = false;
   bool _isPlayingAudio = false;
   bool _hasUserInput = false;
-  List<String> _aiAlternatives = [];
 
   // Animations
   late AnimationController _swapAnimController;
@@ -65,7 +71,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
 
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
     );
     _pulseScale = Tween<double>(begin: 0.95, end: 1.15).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
@@ -80,6 +86,14 @@ class _TranslatorScreenState extends State<TranslatorScreen>
       }
     });
 
+    _audioHandler.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _isPlayingAudio = false;
+        });
+      }
+    });
+
     if (_hasUserInput) {
       _performTranslation();
     }
@@ -87,6 +101,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
 
   @override
   void dispose() {
+    _audioHandler.dispose();
     _swapAnimController.dispose();
     _pulseController.dispose();
     _inputController.dispose();
@@ -99,11 +114,32 @@ class _TranslatorScreenState extends State<TranslatorScreen>
   void _swapLanguages() {
     _swapAnimController.forward(from: 0);
     setState(() {
-      final temp = _sourceLanguage;
-      _sourceLanguage = _targetLanguage;
-      _targetLanguage = temp;
+      if (_sourceLanguage.code == 'auto') {
+        // When swapping from auto, set source to current target and toggle target between Urdu and English
+        if (_targetLanguage.code == 'ur') {
+          _sourceLanguage = TranslationService.getLanguage('ur');
+          _targetLanguage = TranslationService.getLanguage('en');
+        } else {
+          _sourceLanguage = TranslationService.getLanguage('en');
+          _targetLanguage = TranslationService.getLanguage('ur');
+        }
+      } else {
+        final previousSource = _sourceLanguage;
+        _sourceLanguage = _targetLanguage;
+        // Output language must be either Urdu or English
+        _targetLanguage = (previousSource.code == 'ur' || previousSource.code == 'en')
+            ? previousSource
+            : TranslationService.getLanguage('ur');
+      }
 
-      if (_hasUserInput && _translatedText != 'ٹائپ کریں یا بولیں...') {
+      final tempRom = _romanizedPronunciation;
+      _romanizedPronunciation = _sourceRomanizedPronunciation;
+      _sourceRomanizedPronunciation = tempRom;
+      _detectedLanguage = '';
+
+      if (_hasUserInput &&
+          _translatedText != 'ٹائپ کریں یا بولیں...' &&
+          _translatedText != 'Type or speak...') {
         _inputController.text = _translatedText;
         _performTranslation();
       }
@@ -111,7 +147,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
   }
 
   // ──────────────────────────────────────────────
-  // Translation Core
+  // Translation Core (Text)
   // ──────────────────────────────────────────────
   Future<void> _performTranslation() async {
     final text = _inputController.text.trim();
@@ -121,7 +157,9 @@ class _TranslatorScreenState extends State<TranslatorScreen>
             ? 'ٹائپ کریں یا بولیں...'
             : 'Type or speak...';
         _romanizedPronunciation = '';
-        _aiAlternatives = [];
+        _sourceRomanizedPronunciation = '';
+        _currentAudioBase64 = '';
+        _detectedLanguage = '';
       });
       return;
     }
@@ -140,9 +178,9 @@ class _TranslatorScreenState extends State<TranslatorScreen>
 
     final translated = result['translated'] ?? '';
     final romanized = result['romanized'] ?? '';
-
-    // Generate alternatives
-    final alternatives = _generateAlternatives(text, translated);
+    final sourceRomanized = result['source_romanized'] ?? '';
+    final audioBase64 = result['audio_base64'] ?? '';
+    final detected = result['detected_language'] ?? '';
 
     // Save to history
     final item = TranslationItem(
@@ -159,59 +197,115 @@ class _TranslatorScreenState extends State<TranslatorScreen>
     setState(() {
       _translatedText = translated;
       _romanizedPronunciation = romanized;
-      _aiAlternatives = alternatives;
+      _sourceRomanizedPronunciation = sourceRomanized;
+      _currentAudioBase64 = audioBase64;
+      if (detected.isNotEmpty) {
+        _detectedLanguage = detected;
+      }
       _isTranslating = false;
     });
   }
 
-  List<String> _generateAlternatives(String text, String translated) {
-    if (_targetLanguage.code == 'ur') {
-      return [
-        'روایتی انداز: $translated',
-        'مختصر و شائستہ: براہ کرم رہنمائی فرمائیں۔',
-        'عام بول چال: کیا یہ ممکن ہے؟',
-      ];
-    } else {
-      return [
-        'Formal: Would you kindly assist me with this?',
-        'Casual: Can you help me out with this?',
-        'Quick Tourist: Excuse me, how much for this?',
-      ];
-    }
-  }
-
   // ──────────────────────────────────────────────
-  // Mic Voice Input Simulation
+  // Real-Time Microphone Voice Input & Speech-to-Text
   // ──────────────────────────────────────────────
   Future<void> _handleMicPress() async {
-    if (_isListening) {
-      _stopListening();
-      return;
+    if (_audioHandler.isRecording) {
+      await _stopRecordingAndTranslate();
+    } else {
+      await _startRecording();
     }
-
-    setState(() => _isListening = true);
-    _pulseController.repeat(reverse: true);
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    _stopListening();
-
-    final samples = [
-      'Where is the best scenic view of Rakaposhi Mountain?',
-      'How much does a round trip jeep to Attabad Lake cost?',
-      'Can you please recommend clean traditional food here?',
-      'Thank you so much for your warm hospitality!',
-      'Where can I find pure bottled drinking water?',
-    ];
-    final picked = samples[DateTime.now().second % samples.length];
-
-    _inputController.text = picked;
-    _performTranslation();
   }
 
-  void _stopListening() {
+  Future<void> _startRecording() async {
+    try {
+      await _audioHandler.startRecording();
+      setState(() {
+        _isListening = true;
+      });
+      _pulseController.repeat(reverse: true);
+    } catch (e) {
+      debugPrint('Error starting microphone recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecordingAndTranslate() async {
+    String? recordedPath;
+    try {
+      recordedPath = await _audioHandler.stopRecording();
+      _stopListeningAnimation();
+
+      if (recordedPath == null || recordedPath.isEmpty) return;
+
+      setState(() {
+        _isTranslating = true;
+      });
+
+      final result = await TranslationService.translateVoiceFile(
+        filePath: recordedPath,
+        sourceCode: _sourceLanguage.code,
+        targetCode: _targetLanguage.code,
+      );
+
+      // Clean up temporary audio file after upload
+      await TranslatorAudioHandler.cleanupTempFile(recordedPath);
+
+      if (!mounted) return;
+
+      final transcript = result['transcript'] ?? '';
+      final translated = result['translated'] ?? '';
+      final romanized = result['romanized'] ?? '';
+      final sourceRomanized = result['source_romanized'] ?? '';
+      final audioBase64 = result['audio_base64'] ?? '';
+      final detected = result['detected_language'] ?? '';
+
+      if (transcript.isNotEmpty) {
+        _inputController.text = transcript;
+      }
+
+      setState(() {
+        _translatedText = translated;
+        _romanizedPronunciation = romanized;
+        _sourceRomanizedPronunciation = sourceRomanized;
+        _currentAudioBase64 = audioBase64;
+        if (detected.isNotEmpty) {
+          _detectedLanguage = detected;
+        }
+        _isTranslating = false;
+      });
+
+      if (audioBase64.isNotEmpty) {
+        setState(() => _isPlayingAudio = true);
+        await _audioHandler.playBase64Audio(audioBase64);
+      }
+    } catch (e) {
+      debugPrint('Error in voice translation: $e');
+      if (recordedPath != null) {
+        await TranslatorAudioHandler.cleanupTempFile(recordedPath);
+      }
+      if (mounted) {
+        setState(() {
+          _isTranslating = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Voice translation failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _stopListeningAnimation() {
     if (mounted) {
       setState(() => _isListening = false);
       _pulseController.stop();
@@ -220,16 +314,47 @@ class _TranslatorScreenState extends State<TranslatorScreen>
   }
 
   // ──────────────────────────────────────────────
-  // Audio Playback Simulation
+  // Real Audio Playback (Edge-TTS Base64)
   // ──────────────────────────────────────────────
   Future<void> _playAudio() async {
-    if (_translatedText.isEmpty || _isPlayingAudio) return;
+    if (_isPlayingAudio) {
+      await _audioHandler.stopPlayback();
+      setState(() => _isPlayingAudio = false);
+      return;
+    }
+
+    if (_currentAudioBase64.isNotEmpty) {
+      try {
+        setState(() => _isPlayingAudio = true);
+        await _audioHandler.playBase64Audio(_currentAudioBase64);
+      } catch (e) {
+        if (mounted) setState(() => _isPlayingAudio = false);
+      }
+      return;
+    }
+
+    final cleanText = _translatedText.trim();
+    if (cleanText.isEmpty || cleanText.contains('...')) return;
 
     setState(() => _isPlayingAudio = true);
-    await Future.delayed(const Duration(milliseconds: 1500));
 
-    if (mounted) {
-      setState(() => _isPlayingAudio = false);
+    try {
+      final b64 = await TranslationService.synthesizeSpeech(
+        text: cleanText,
+        languageCode: _targetLanguage.code,
+      );
+
+      if (!mounted) return;
+
+      if (b64.isNotEmpty) {
+        _currentAudioBase64 = b64;
+        await _audioHandler.playBase64Audio(b64);
+      } else {
+        setState(() => _isPlayingAudio = false);
+      }
+    } catch (e) {
+      debugPrint('Audio synthesis error: $e');
+      if (mounted) setState(() => _isPlayingAudio = false);
     }
   }
 
@@ -263,104 +388,10 @@ class _TranslatorScreenState extends State<TranslatorScreen>
           ? 'ٹائپ کریں یا بولیں...'
           : 'Type or speak...';
       _romanizedPronunciation = '';
-      _aiAlternatives = [];
+      _sourceRomanizedPronunciation = '';
+      _currentAudioBase64 = '';
+      _detectedLanguage = '';
     });
-  }
-
-  // ──────────────────────────────────────────────
-  // AI Alternatives Modal
-  // ──────────────────────────────────────────────
-  void _showAlternativesSheet() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppTheme.darkSurface : AppTheme.lightSurface;
-    final onSurface = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
-    final onVariant = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
-    final containerColor = isDark ? const Color(0xFF282A2A) : const Color(0xFFF0F2F5);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 30),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-            border: Border(top: BorderSide(color: AppTheme.primary.withValues(alpha: 0.3))),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: onVariant.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Row(
-                children: [
-                  Icon(Icons.auto_awesome_rounded, color: AppTheme.primary, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'AI Tone & Context Variations',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              if (_aiAlternatives.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: Text(
-                      'Type or speak a phrase first to see intelligent variations.',
-                      style: TextStyle(color: onVariant, fontSize: 13),
-                    ),
-                  ),
-                )
-              else
-                ..._aiAlternatives.map((alt) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: containerColor,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: onVariant.withValues(alpha: 0.15)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            alt,
-                            style: TextStyle(color: onSurface, fontSize: 14, height: 1.3),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, color: AppTheme.primary, size: 18),
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: alt));
-                            Navigator.pop(sheetContext);
-                          },
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   // ──────────────────────────────────────────────
@@ -373,6 +404,12 @@ class _TranslatorScreenState extends State<TranslatorScreen>
     final onVariant = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
     final containerColor = isDark ? const Color(0xFF282A2A) : const Color(0xFFF0F2F5);
 
+    // Source languages has Auto Detect + all global languages
+    // Output target language ONLY has Urdu and English
+    final availableLanguages = isSource
+        ? TranslationService.sourceLanguages
+        : TranslationService.targetLanguages;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -381,13 +418,17 @@ class _TranslatorScreenState extends State<TranslatorScreen>
         String query = '';
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final filtered = TranslationService.supportedLanguages.where((l) {
+            final filtered = availableLanguages.where((l) {
               final q = query.toLowerCase();
               return l.name.toLowerCase().contains(q) || l.nativeName.toLowerCase().contains(q);
             }).toList();
 
+            final sheetHeight = isSource
+                ? MediaQuery.of(context).size.height * 0.72
+                : 260.0;
+
             return Container(
-              height: MediaQuery.of(context).size.height * 0.72,
+              height: sheetHeight,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               decoration: BoxDecoration(
                 color: surface,
@@ -409,23 +450,25 @@ class _TranslatorScreenState extends State<TranslatorScreen>
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    isSource ? 'Select Source Language' : 'Select Target Language',
+                    isSource ? 'Select Source Language' : 'Select Output Language',
                     style: TextStyle(color: onSurface, fontSize: 18, fontWeight: FontWeight.w800),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    onChanged: (val) => setSheetState(() => query = val),
-                    style: TextStyle(color: onSurface, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'Search (e.g. Urdu, English, Pashto)...',
-                      hintStyle: TextStyle(color: onVariant),
-                      prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primary, size: 20),
-                      filled: true,
-                      fillColor: containerColor,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  if (isSource) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      onChanged: (val) => setSheetState(() => query = val),
+                      style: TextStyle(color: onSurface, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'Search (e.g. Urdu, English, French)...',
+                        hintStyle: TextStyle(color: onVariant),
+                        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primary, size: 20),
+                        filled: true,
+                        fillColor: containerColor,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 12),
                   Expanded(
                     child: ListView.separated(
@@ -437,6 +480,8 @@ class _TranslatorScreenState extends State<TranslatorScreen>
                         final isSelected = isSource
                             ? _sourceLanguage.code == lang.code
                             : _targetLanguage.code == lang.code;
+
+                        final isAuto = lang.code == 'auto';
 
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -451,7 +496,20 @@ class _TranslatorScreenState extends State<TranslatorScreen>
                                   fontSize: 15,
                                 ),
                               ),
-                              if (lang.isPakistaniRegional) ...[
+                              if (isAuto) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'AUTO',
+                                    style: TextStyle(color: AppTheme.primary, fontSize: 9, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ] else if (lang.isPakistaniRegional) ...[
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -467,12 +525,16 @@ class _TranslatorScreenState extends State<TranslatorScreen>
                               ],
                             ],
                           ),
-                          subtitle: Text(lang.nativeName, style: TextStyle(color: onVariant, fontSize: 13)),
+                          subtitle: Text(
+                            isAuto ? 'Automatically detect input language' : lang.nativeName,
+                            style: TextStyle(color: onVariant, fontSize: 13),
+                          ),
                           trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AppTheme.primary) : null,
                           onTap: () {
                             setState(() {
                               if (isSource) {
                                 _sourceLanguage = lang;
+                                _detectedLanguage = '';
                               } else {
                                 _targetLanguage = lang;
                               }
@@ -522,7 +584,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
   }
 
   // ──────────────────────────────────────────────
-  // 1. TOP APP BAR (Back Button + PakTravel AI + ThemeToggle)
+  // 1. TOP APP BAR
   // ──────────────────────────────────────────────
   Widget _buildTopAppBar(bool isDark) {
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
@@ -605,13 +667,24 @@ class _TranslatorScreenState extends State<TranslatorScreen>
 
           const SizedBox(height: 32),
 
-          // ── Big Pulsing Microphone Button ──
+          // ── Big Pulsing Microphone Button (Real Recording) ──
           _buildBigMicButton(isDark),
 
           const SizedBox(height: 24),
         ],
       ),
     );
+  }
+
+  // ── Source Title on Face of Dropdown ──
+  String _getSourcePillTitle() {
+    if (_sourceLanguage.code == 'auto') {
+      if (_detectedLanguage.isNotEmpty && _hasUserInput) {
+        return 'Auto Detect ($_detectedLanguage)';
+      }
+      return 'Auto Detect';
+    }
+    return _sourceLanguage.name;
   }
 
   // ── Language Selection Row ──
@@ -628,7 +701,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
             onTap: () => _openLanguagePicker(isSource: true),
             child: Container(
               height: 52,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: surface,
                 borderRadius: BorderRadius.circular(20),
@@ -645,27 +718,29 @@ class _TranslatorScreenState extends State<TranslatorScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  Text(_sourceLanguage.flag, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(
-                      _sourceLanguage.name,
+                      _getSourcePillTitle(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: onSurface,
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Icon(Icons.expand_more_rounded, color: onVariant, size: 20),
+                  const SizedBox(width: 4),
+                  Icon(Icons.expand_more_rounded, color: onVariant, size: 18),
                 ],
               ),
             ),
           ),
         ),
 
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
 
         // Swap Circular Button
         RotationTransition(
@@ -673,8 +748,8 @@ class _TranslatorScreenState extends State<TranslatorScreen>
           child: GestureDetector(
             onTap: _swapLanguages,
             child: Container(
-              width: 48,
-              height: 48,
+              width: 46,
+              height: 46,
               decoration: BoxDecoration(
                 color: AppTheme.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
@@ -685,13 +760,13 @@ class _TranslatorScreenState extends State<TranslatorScreen>
               child: const Icon(
                 Icons.swap_horiz_rounded,
                 color: AppTheme.primary,
-                size: 24,
+                size: 22,
               ),
             ),
           ),
         ),
 
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
 
         // Target Pill
         Expanded(
@@ -699,7 +774,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
             onTap: () => _openLanguagePicker(isSource: false),
             child: Container(
               height: 52,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: surface,
                 borderRadius: BorderRadius.circular(20),
@@ -716,6 +791,8 @@ class _TranslatorScreenState extends State<TranslatorScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  Text(_targetLanguage.flag, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       _targetLanguage.name,
@@ -723,13 +800,13 @@ class _TranslatorScreenState extends State<TranslatorScreen>
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppTheme.primary,
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.expand_more_rounded, color: AppTheme.primary, size: 20),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.expand_more_rounded, color: AppTheme.primary, size: 18),
                 ],
               ),
             ),
@@ -786,8 +863,19 @@ class _TranslatorScreenState extends State<TranslatorScreen>
               isDense: true,
               contentPadding: EdgeInsets.zero,
             ),
-            onChanged: (_) => _performTranslation(),
+            onSubmitted: (_) => _performTranslation(),
           ),
+          if (_sourceRomanizedPronunciation.isNotEmpty && _hasUserInput) ...[
+            const SizedBox(height: 8),
+            SelectableText(
+              '🗣️ $_sourceRomanizedPronunciation',
+              style: TextStyle(
+                color: onVariant,
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -800,11 +888,23 @@ class _TranslatorScreenState extends State<TranslatorScreen>
                 children: [
                   if (_hasUserInput)
                     IconButton(
+                      icon: const Icon(Icons.send_rounded, color: AppTheme.primary, size: 20),
+                      tooltip: 'Translate',
+                      onPressed: _performTranslation,
+                    ),
+                  if (_hasUserInput)
+                    IconButton(
                       icon: const Icon(Icons.close_rounded, color: AppTheme.primary, size: 20),
+                      tooltip: 'Clear',
                       onPressed: _clearInput,
                     ),
                   IconButton(
-                    icon: Icon(_isListening ? Icons.stop_circle_rounded : Icons.mic_rounded, color: AppTheme.primary, size: 20),
+                    icon: Icon(
+                      _isListening ? Icons.stop_circle_rounded : Icons.mic_rounded,
+                      color: _isListening ? Colors.redAccent : AppTheme.primary,
+                      size: 22,
+                    ),
+                    tooltip: _isListening ? 'Stop recording' : 'Record voice',
                     onPressed: _handleMicPress,
                   ),
                 ],
@@ -816,7 +916,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
     );
   }
 
-  // ── Translated Card (with AppTheme.primary) ──
+  // ── Translated Card ──
   Widget _buildTranslatedCard(bool isDark) {
     final onVariant = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
 
@@ -841,25 +941,32 @@ class _TranslatorScreenState extends State<TranslatorScreen>
           Align(
             alignment: _targetLanguage.code == 'ur' ? Alignment.centerRight : Alignment.centerLeft,
             child: _isTranslating
-                ? const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(AppTheme.primary),
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primary),
+                          ),
                         ),
-                      ),
-                      SizedBox(width: 10),
-                      Text(
-                        'Translating...',
-                        style: TextStyle(color: AppTheme.primary, fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ],
+                        const SizedBox(width: 14),
+                        Text(
+                          'Translating with AI...',
+                          style: TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   )
-                : Text(
+                : SelectableText(
                     _translatedText,
                     textDirection: _targetLanguage.code == 'ur' ? TextDirection.rtl : TextDirection.ltr,
                     style: const TextStyle(
@@ -872,7 +979,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
           ),
           if (_romanizedPronunciation.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
+            SelectableText(
               '🗣️ $_romanizedPronunciation',
               style: TextStyle(
                 color: onVariant,
@@ -883,51 +990,28 @@ class _TranslatorScreenState extends State<TranslatorScreen>
           ],
           const SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // AI Alternatives trigger
-              GestureDetector(
-                onTap: _showAlternativesSheet,
-                child: const Row(
-                  children: [
-                    Icon(Icons.auto_awesome_rounded, color: AppTheme.primary, size: 16),
-                    SizedBox(width: 6),
-                    Text(
-                      'AI Alternatives',
-                      style: TextStyle(
-                        color: AppTheme.primary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
+              IconButton(
+                icon: const Icon(Icons.content_copy_rounded, color: AppTheme.primary, size: 20),
+                tooltip: 'Copy',
+                onPressed: _copyTranslation,
               ),
-
-              // Actions (Copy, Audio Speaker)
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.content_copy_rounded, color: AppTheme.primary, size: 20),
-                    onPressed: _copyTranslation,
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: _playAudio,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: _playAudio,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.18),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        _isPlayingAudio ? Icons.volume_up_rounded : Icons.volume_up_outlined,
-                        color: AppTheme.primary,
-                        size: 20,
-                      ),
-                    ),
+                  child: Icon(
+                    _isPlayingAudio ? Icons.volume_up_rounded : Icons.volume_up_outlined,
+                    color: _isPlayingAudio ? Colors.greenAccent : AppTheme.primary,
+                    size: 20,
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -947,26 +1031,31 @@ class _TranslatorScreenState extends State<TranslatorScreen>
           height: 90,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF739335),
-                AppTheme.primary,
-              ],
+              colors: _isListening
+                  ? [
+                      const Color(0xFFE53935),
+                      const Color(0xFFC62828),
+                    ]
+                  : [
+                      const Color(0xFF739335),
+                      AppTheme.primary,
+                    ],
             ),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.primary.withValues(alpha: 0.35),
+                color: (_isListening ? Colors.redAccent : AppTheme.primary).withValues(alpha: 0.35),
                 blurRadius: 28,
                 spreadRadius: 2,
                 offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: const Center(
+          child: Center(
             child: Icon(
-              Icons.mic_rounded,
+              _isListening ? Icons.stop_rounded : Icons.mic_rounded,
               color: Colors.white,
               size: 40,
             ),

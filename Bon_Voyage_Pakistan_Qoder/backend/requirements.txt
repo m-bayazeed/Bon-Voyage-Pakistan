@@ -1,5 +1,18 @@
+# Core Framework & Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.12
+httpx>=0.27.0
+
+# AI & Speech Services
+google-genai>=0.1.1
+groq>=0.11.0
+edge-tts>=6.1.12
+
+# Legacy Flask & Auth Support
 Flask==3.1.1
 Flask-Cors==6.0.1
 PyJWT==2.10.1
-python-dotenv==1.1.1
 Werkzeug==3.1.3

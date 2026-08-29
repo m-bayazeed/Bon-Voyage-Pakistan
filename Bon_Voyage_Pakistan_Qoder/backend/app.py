@@ -357,14 +357,95 @@ def api_chat_trip_plan():
 
 
 # ──────────────────────────────────────────────
-# Health Check
+# Health & Translator Endpoints
 # ──────────────────────────────────────────────
 
 @app.route("/", methods=["GET"])
+@app.route("/health", methods=["GET"])
 def health():
     """Health check endpoint."""
-    return jsonify({"status": "ok", "app": "Bon Voyage Pakistan API"}), 200
+    return jsonify({"status": "ok", "service": "bon-voyage-translator", "app": "Bon Voyage Pakistan API"}), 200
 
+
+@app.route("/api/v1/translate/text", methods=["POST"])
+def translate_text_route():
+    """Flask endpoint for text translation (compatible with FastAPI pipeline)."""
+    import asyncio
+    from app.services.translation_service import translation_pipeline
+
+    data = request.get_json() or {}
+    text = data.get("text", "")
+    source_language = data.get("source_language", "auto")
+    target_language = data.get("target_language", "ur")
+
+    try:
+        result = asyncio.run(
+            translation_pipeline.translate_text(
+                text=text,
+                source_language=source_language,
+                target_language=target_language,
+            )
+        )
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Translation error: {e}")
+        status_code = getattr(e, "status_code", 500)
+        detail = getattr(e, "detail", str(e))
+        return jsonify({"success": False, "error": detail}), status_code
+
+
+@app.route("/api/v1/translate/voice", methods=["POST"])
+def translate_voice_route():
+    """Flask endpoint for voice translation."""
+    import asyncio
+    from app.services.translation_service import translation_pipeline
+
+    if "audio_file" not in request.files:
+        return jsonify({"success": False, "error": "No audio_file provided in multipart request."}), 400
+
+    audio_file = request.files["audio_file"]
+    source_language = request.form.get("source_language", "auto")
+    target_language = request.form.get("target_language", "ur")
+
+    try:
+        result = asyncio.run(
+            translation_pipeline.translate_voice(
+                audio_file=audio_file,
+                source_language=source_language,
+                target_language=target_language,
+            )
+        )
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Voice translation error: {e}")
+        status_code = getattr(e, "status_code", 500)
+        detail = getattr(e, "detail", str(e))
+        return jsonify({"success": False, "error": detail}), status_code
+
+
+@app.route("/api/v1/translate/synthesize", methods=["POST"])
+def synthesize_route():
+    """Flask endpoint for TTS synthesis."""
+    import asyncio
+    from app.services.translation_service import translation_pipeline
+
+    data = request.get_json() or {}
+    text = data.get("text", "")
+    language = data.get("language", "ur")
+
+    try:
+        result = asyncio.run(
+            translation_pipeline.synthesize(
+                text=text,
+                language=language,
+            )
+        )
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Synthesis error: {e}")
+        status_code = getattr(e, "status_code", 500)
+        detail = getattr(e, "detail", str(e))
+        return jsonify({"success": False, "error": detail}), status_code
 
 
 # ──────────────────────────────────────────────
