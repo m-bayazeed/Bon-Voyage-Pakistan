@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import '../config/api_config.dart';
 import '../models/scan_item_model.dart';
 import 'auth_service.dart';
 
@@ -148,8 +151,8 @@ class ScanHistoryService {
         identifiedLocation: identifiedLocation,
         location: location ?? 'Pakistan',
         category: category ?? 'Landmark Scan',
-        confidenceScore: 0.95,
-        shortDescription: 'Saved image discovery awaiting detailed AI analysis.',
+        confidenceScore: 0.0,
+        shortDescription: 'Analyzing image with AI...',
         historicalStory: '',
         keyFacts: const [],
         recommendedActivities: const [],
@@ -157,7 +160,7 @@ class ScanHistoryService {
         timestamp: DateTime.now(),
         scanType: scanType,
         imagePath: permanentPath ?? rawImagePath,
-        searchStatus: 'Saved',
+        searchStatus: 'Pending',
         imagePlaceholderAsset: 'assets/images/onboarding1.png',
         isFavorite: false,
       );
@@ -275,12 +278,49 @@ class ScanHistoryService {
     }
   }
 
-  /// AI Recognition of a landmark with permanent image persistence and user association.
+  /// Discovers the active running backend endpoint (FastAPI on Port 8000 or Flask on Port 5000)
+  /// using a fast 1.5-second parallel health check across candidate hosts.
+  static Future<String> _resolveActiveScanEndpoint() async {
+    final candidateBases = <String>[];
+    for (final host in ApiConfig.candidateHosts) {
+      final h = host.trim();
+      if (h.isNotEmpty) {
+        if (!candidateBases.contains('http://$h:8000')) candidateBases.add('http://$h:8000');
+        if (!candidateBases.contains('http://$h:5000')) candidateBases.add('http://$h:5000');
+      }
+    }
+
+    // Fast parallel probe on /health (1500ms max)
+    final probeFutures = candidateBases.map((base) async {
+      try {
+        final res = await http.get(Uri.parse('$base/health')).timeout(const Duration(milliseconds: 1500));
+        if (res.statusCode == 200) {
+          return '$base/api/v1/landmarks/scan';
+        }
+      } catch (_) {}
+      return null;
+    }).toList();
+
+    final results = await Future.wait(probeFutures);
+    for (final r in results) {
+      if (r != null) {
+        debugPrint('[SCAN] Active backend endpoint discovered: $r');
+        return r;
+      }
+    }
+
+    debugPrint('[SCAN] Using configured default endpoint: ${ApiConfig.landmarksScan}');
+    return ApiConfig.landmarksScan;
+  }
+
+  /// AI Landmark Recognition using Gemini Multimodal Vision through FastAPI backend.
   static Future<ScanItem> simulateAiRecognition({
     required bool isUpload,
     String? imagePath,
     ScanItem? existingItem,
     int? userId,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       // 1. Copy image file to permanent app directory if provided and not already saved
@@ -291,109 +331,203 @@ class ScanHistoryService {
         permanentImagePath = await saveImagePermanently(imagePath);
       }
 
+      final activePath = permanentImagePath ?? imagePath ?? existingItem?.imagePath;
+      if (activePath == null || !await File(activePath).exists()) {
+        throw Exception('Image file not found on disk at $activePath');
+      }
+
       final currentUserId = userId ?? existingItem?.userId ?? await AuthService.getUserId();
+      final endpoint = await _resolveActiveScanEndpoint();
+      final file = File(activePath);
+      final fileSizeKb = (await file.length()) / 1024.0;
 
-      // 2. Realistic neural network extraction delay
-      await Future.delayed(const Duration(milliseconds: 1200));
+      debugPrint('[SCAN] Source: ${isUpload ? 'GALLERY' : 'CAMERA'}');
+      debugPrint('[SCAN] Endpoint: $endpoint');
+      debugPrint('[SCAN] Image filename: ${p.basename(activePath)}');
+      debugPrint('[SCAN] Image size: ${fileSizeKb.toStringAsFixed(1)} KB');
+      debugPrint('[SCAN] Uploading image to FastAPI Gemini backend...');
 
-      final possibleDiscoveries = [
-        ScanItem(
+      Map<String, dynamic>? responseData;
+      String lastError = '';
+
+      // 2. Call FastAPI backend with a generous 120s timeout for Gemini Multimodal Vision
+      try {
+        final request = http.MultipartRequest('POST', Uri.parse(endpoint));
+        request.files.add(await http.MultipartFile.fromPath('image', activePath));
+        if (latitude != null) request.fields['latitude'] = latitude.toString();
+        if (longitude != null) request.fields['longitude'] = longitude.toString();
+
+        final streamedResponse = await request.send().timeout(const Duration(seconds: 120));
+        final response = await http.Response.fromStream(streamedResponse);
+
+        debugPrint('[SCAN] Backend response HTTP status: ${response.statusCode}');
+        if (response.statusCode == 200) {
+          responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        } else {
+          try {
+            final errJson = jsonDecode(response.body) as Map<String, dynamic>;
+            lastError = errJson['error'] ?? errJson['detail'] ?? 'HTTP ${response.statusCode}';
+          } catch (_) {
+            lastError = 'HTTP ${response.statusCode} from server';
+          }
+          debugPrint('[SCAN] Backend returned error: $lastError');
+        }
+      } catch (e) {
+        debugPrint('[SCAN] Network request error: $e');
+        lastError = e.toString();
+      }
+
+      // 3. Process Real Response
+      if (responseData != null && responseData['success'] == true) {
+        final isIdentified = responseData['identified'] == true;
+        final confidence = (responseData['confidence'] as num?)?.toDouble() ?? (isIdentified ? 0.95 : 0.0);
+
+        List<String> parseList(dynamic val) {
+          if (val == null) return [];
+          if (val is List) return val.map((e) => e.toString()).toList();
+          if (val is String) {
+            try {
+              final d = jsonDecode(val);
+              if (d is List) return d.map((e) => e.toString()).toList();
+            } catch (_) {}
+          }
+          return [];
+        }
+
+        final facts = parseList(responseData['interesting_facts']);
+        final events = parseList(responseData['historical_events']);
+        final archSignificance = responseData['architectural_significance']?.toString();
+        final travelTip = responseData['travel_tip']?.toString();
+        final historyOverview = responseData['history_overview']?.toString() ?? '';
+        final landmarkName = responseData['landmark_name']?.toString();
+
+        // Combine architectural significance and facts nicely if helpful
+        final combinedFacts = <String>[...facts];
+        if (archSignificance != null && archSignificance.isNotEmpty && !combinedFacts.contains(archSignificance)) {
+          combinedFacts.insert(0, archSignificance);
+        }
+
+        debugPrint('[SCAN] Result: identified=$isIdentified, landmark=$landmarkName, confidence=$confidence');
+
+        final item = ScanItem(
           id: existingItem?.id ?? 'SCAN-RECOG-${DateTime.now().millisecondsSinceEpoch}',
           userId: currentUserId,
-          title: 'Passu Cones (Cathedral Ridge)',
-          identifiedLocation: 'Passu Cones, Upper Hunza',
-          location: 'Upper Hunza, Gilgit-Baltistan',
-          category: 'Geological Wonder & Karakoram Peaks',
-          confidenceScore: 0.985,
-          shortDescription:
-              'Iconic serrated crown-shaped peaks rising sharply above the Karakoram Highway and Hunza River.',
-          historicalStory:
-              'Known locally as Tupopdan ("Sun-Drenched Peak"), the Passu Cones rise to an elevation of 6,106 m (20,033 ft). Their dramatic pointed needle spires are among the most photographed natural formations on the Ancient Silk Road.',
-          keyFacts: const [
-            'Peak Altitude: 6,106 meters (20,033 ft)',
-            'Valley: Gojal, Upper Hunza',
-            'Nearby Attractions: Hussaini Suspension Bridge & Borith Lake',
-          ],
-          recommendedActivities: const [
-            'Photograph golden morning light kissing the sharp cones',
-            'Cross the thrilling Hussaini Hanging Bridge nearby',
-            'Trek toward the white tongues of Passu Glacier',
-          ],
-          bestTimeToVisit: 'April - October (Morning Golden Hour)',
+          title: landmarkName ?? (isIdentified ? 'Pakistani Landmark' : 'Unidentified Landmark'),
+          identifiedLocation: landmarkName,
+          location: responseData['city_or_region']?.toString() ?? 'Pakistan',
+          category: responseData['historical_era']?.toString() ??
+              (isIdentified ? 'Pakistani Heritage Site' : 'Unidentified'),
+          confidenceScore: confidence,
+          shortDescription: historyOverview.isNotEmpty
+              ? historyOverview
+              : (responseData['message']?.toString() ?? ''),
+          historicalStory: historyOverview,
+          keyFacts: combinedFacts,
+          recommendedActivities: events.isNotEmpty ? events : (travelTip != null ? [travelTip] : []),
+          bestTimeToVisit: travelTip ?? 'All year round',
           timestamp: DateTime.now(),
           scanType: isUpload ? ScanType.upload : ScanType.camera,
-          imagePath: permanentImagePath ?? existingItem?.imagePath,
-          searchStatus: 'Identified',
+          imagePath: activePath,
+          searchStatus: isIdentified ? 'Identified' : 'Not Identified',
           imagePlaceholderAsset: 'assets/images/onboarding1.png',
-        ),
-        ScanItem(
-          id: existingItem?.id ?? 'SCAN-RECOG-${DateTime.now().millisecondsSinceEpoch}',
-          userId: currentUserId,
-          title: 'Derawar Fort',
-          identifiedLocation: 'Derawar Fort, Cholistan Desert',
-          location: 'Cholistan Desert, Bahawalpur, Punjab',
-          category: 'Ancient Desert Fortress',
-          confidenceScore: 0.978,
-          shortDescription:
-              'Gigantic 9th-century square fortress with 40 towering bastions rising majestically in the Cholistan sands.',
-          historicalStory:
-              'Derawar Fort was originally built in the 9th century by the Rajput ruler Rai Jajja Bhatti and later rebuilt in 1732 by the Nawabs of Bahawalpur. Its 40 monumental cylindrical bastions rise 30 meters high, dominating the desert horizon for miles.',
-          keyFacts: const [
-            'Bastions: 40 massive rounded brick bastions',
-            'Circumference: 1,500 meters of towering mud-brick walls',
-            'Location: Heart of Cholistan Desert near Abbasi Royal Tombs',
-          ],
-          recommendedActivities: const [
-            'Attend the annual Cholistan Jeep Desert Rally in winter',
-            'Visit the nearby marble Abbasi Royal Tombs and Shahi Mosque',
-            'Experience desert sunset photography against the bastions',
-          ],
-          bestTimeToVisit: 'November to February for pleasant desert climate',
-          timestamp: DateTime.now(),
-          scanType: isUpload ? ScanType.upload : ScanType.camera,
-          imagePath: permanentImagePath ?? existingItem?.imagePath,
-          searchStatus: 'Identified',
-          imagePlaceholderAsset: 'assets/images/onboarding2.png',
-        ),
-        ScanItem(
-          id: existingItem?.id ?? 'SCAN-RECOG-${DateTime.now().millisecondsSinceEpoch}',
-          userId: currentUserId,
-          title: 'Katas Raj Temples',
-          identifiedLocation: 'Katas Raj Temples, Chakwal',
-          location: 'Potohar Plateau, Chakwal, Punjab',
-          category: 'Ancient Sacred Heritage Complex',
-          confidenceScore: 0.982,
-          shortDescription:
-              'Sacred temple complex surrounding a mystical spring pond, rooted in millennia of ancient folklore.',
-          historicalStory:
-              'According to Hindu mythology, the pond of Katas was formed from the tears of Lord Shiva. The complex features shrines dating from the 6th to 11th centuries CE alongside Buddhist stupa remains and medieval Havelis, showcasing Pakistan’s deep interfaith heritage.',
-          keyFacts: const [
-            'Origins: Shrines spanning 6th – 11th Century CE (Kashmirian Architecture)',
-            'Significance: One of the holiest pilgrimage sites in the subcontinent',
-            'Site: Features the famous Ramachandra, Hanuman, and Shiva temples',
-          ],
-          recommendedActivities: const [
-            'Explore ancient temple carvings and subterranean walkways',
-            'Reflect beside the sacred natural pond',
-            'Visit the nearby ancient Khewra Salt Mines',
-          ],
-          bestTimeToVisit: 'September to March',
-          timestamp: DateTime.now(),
-          scanType: isUpload ? ScanType.upload : ScanType.camera,
-          imagePath: permanentImagePath ?? existingItem?.imagePath,
-          searchStatus: 'Identified',
-          imagePlaceholderAsset: 'assets/images/onboarding1.png',
-        ),
-      ];
+        );
 
-      // Pick a discovery and save to SQLite history
-      final chosen = possibleDiscoveries[DateTime.now().second % possibleDiscoveries.length];
-      await saveScanItem(chosen);
-      return chosen;
+        await saveScanItem(item);
+        return item;
+      }
+
+      // 4. In case of failure or network error, surface actual failure state without fake recognition
+      final errorMsg = lastError.isNotEmpty
+          ? 'Recognition unavailable ($lastError)'
+          : (responseData?['message']?.toString() ?? 'The landmark could not be identified reliably.');
+
+      debugPrint('[SCAN] Failed to identify: $errorMsg');
+
+      final fallbackItem = ScanItem(
+        id: existingItem?.id ?? 'SCAN-RECOG-${DateTime.now().millisecondsSinceEpoch}',
+        userId: currentUserId,
+        title: 'Unidentified Landmark',
+        identifiedLocation: null,
+        location: 'Pakistan',
+        category: 'Unidentified',
+        confidenceScore: 0.0,
+        shortDescription: errorMsg,
+        historicalStory: '',
+        keyFacts: const [],
+        recommendedActivities: const [],
+        bestTimeToVisit: 'All year round',
+        timestamp: DateTime.now(),
+        scanType: isUpload ? ScanType.upload : ScanType.camera,
+        imagePath: activePath,
+        searchStatus: 'Error',
+        imagePlaceholderAsset: 'assets/images/onboarding1.png',
+      );
+
+      await saveScanItem(fallbackItem);
+      return fallbackItem;
     } catch (e, stackTrace) {
-      debugPrint('AI RECOGNITION ERROR: $e');
+      debugPrint('[SCAN] AI RECOGNITION ERROR: $e');
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
+    }
+  }
+
+  // ────────────────────────────────────────────
+  // AI AUDIO STORY (GROQ / NEURAL TTS)
+  // ────────────────────────────────────────────
+  static final Map<String, String> _audioCache = {};
+
+  /// Synthesizes and caches an AI audio story from the backend using Groq / Neural TTS.
+  static Future<String?> fetchStoryAudio({
+    required String storyText,
+    required String itemId,
+    String language = 'en',
+  }) async {
+    // 1. Check in-memory session cache
+    if (_audioCache.containsKey(itemId)) {
+      final cachedPath = _audioCache[itemId]!;
+      if (File(cachedPath).existsSync() && File(cachedPath).lengthSync() > 0) {
+        debugPrint('[TTS] Reusing cached audio for $itemId at $cachedPath');
+        return cachedPath;
+      }
+    }
+
+    try {
+      final scanEndpoint = await _resolveActiveScanEndpoint();
+      final uri = Uri.parse(scanEndpoint);
+      final baseUrl = '${uri.scheme}://${uri.host}:${uri.port}';
+      final ttsUrl = '$baseUrl/api/v1/tts/story';
+
+      debugPrint('[TTS] Requesting story audio from $ttsUrl');
+      final response = await http.post(
+        Uri.parse(ttsUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'text': storyText,
+          'language': language,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      debugPrint('[TTS] Response status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final b64 = data['audio_base64']?.toString();
+        if (b64 != null && b64.isNotEmpty) {
+          final bytes = base64Decode(b64);
+          final tempDir = await getTemporaryDirectory();
+          final safeName = 'story_${itemId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}.mp3';
+          final audioFile = File(p.join(tempDir.path, safeName));
+          await audioFile.writeAsBytes(bytes);
+          _audioCache[itemId] = audioFile.path;
+          debugPrint('[TTS] Saved audio story (${bytes.length} bytes) to ${audioFile.path}');
+          return audioFile.path;
+        }
+      }
+      return null;
+    } catch (e, stackTrace) {
+      debugPrint('[TTS] Story audio generation error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
     }
   }
 }

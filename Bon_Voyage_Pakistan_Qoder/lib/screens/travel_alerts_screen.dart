@@ -39,24 +39,45 @@ class _TravelAlertsScreenState extends State<TravelAlertsScreen> {
     _loadAlerts();
   }
 
-  Future<void> _loadAlerts() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  Future<void> _loadAlerts({bool forceRefresh = false}) async {
+    // 1. Instantly display locally cached authentic alerts if currently empty
+    if (_alerts.isEmpty && !forceRefresh) {
+      final cached = await TravelAlertService.getCachedAlerts(
+        city: _useCurrentLocation ? null : _selectedCity,
+        category: _selectedCategory,
+        severity: _selectedSeverity,
+      );
+      if (cached.isNotEmpty && mounted) {
+        setState(() {
+          _alerts = cached;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      }
+    }
 
+    if (_alerts.isEmpty) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    // 2. Fetch fresh live data from FastAPI backend
     try {
       final results = await TravelAlertService.getAlerts(
         city: _selectedCity,
         useCurrentLocation: _useCurrentLocation,
         category: _selectedCategory,
         severity: _selectedSeverity,
+        forceRefresh: forceRefresh,
       );
 
       if (mounted) {
         setState(() {
           _alerts = results;
           _isLoading = false;
+          _errorMessage = null;
           _selectedAlert = null;
         });
       }
@@ -64,11 +85,14 @@ class _TravelAlertsScreenState extends State<TravelAlertsScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Unable to fetch travel advisories. Please check your network.';
+          if (_alerts.isEmpty) {
+            _errorMessage = 'Unable to fetch travel advisories. Please check your network connection.';
+          }
         });
       }
     }
   }
+
 
   Future<void> _handleMarkAllAsRead() async {
     await TravelAlertService.markAllAsRead(_alerts);
@@ -908,142 +932,164 @@ class _TravelAlertsScreenState extends State<TravelAlertsScreen> {
 
             // 4. Main Feed (Alert Cards)
             Expanded(
-              child: _isLoading
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.primary),
-                          SizedBox(height: 14),
-                          Text(
-                            'Fetching live travel advisories...',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    )
-                  : _errorMessage != null
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _errorMessage!,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 14, color: onVar),
-                                ),
-                                const SizedBox(height: 16),
-                                ElevatedButton.icon(
-                                  onPressed: _loadAlerts,
-                                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                                  label: const Text('Retry'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primary,
-                                    foregroundColor: AppTheme.onPrimary,
+              child: RefreshIndicator(
+                onRefresh: () => _loadAlerts(forceRefresh: true),
+                color: AppTheme.primary,
+                child: _isLoading
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(strokeWidth: 2.5, color: AppTheme.primary),
+                            SizedBox(height: 14),
+                            Text(
+                              'Fetching live travel advisories...',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _errorMessage != null
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.5,
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _errorMessage!,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(fontSize: 14, color: onVar),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        ElevatedButton.icon(
+                                          onPressed: () => _loadAlerts(forceRefresh: true),
+                                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                                          label: const Text('Retry'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppTheme.primary,
+                                            foregroundColor: AppTheme.onPrimary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : _alerts.isEmpty
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.check_circle_outline_rounded,
-                                        size: 48,
-                                        color: Color(0xFF2E7D32),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'All Routes Clear',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w800,
-                                        color: onSurface,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'No active weather warnings or road blocks reported for $_selectedCity in ${_selectedCategory.displayName}.',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(fontSize: 13, color: onVar),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    OutlinedButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _selectedCategory = AlertCategory.all;
-                                          _selectedCity = 'All Pakistan';
-                                        });
-                                        _loadAlerts();
-                                      },
-                                      child: const Text('View All National Alerts'),
-                                    ),
-                                  ],
-                                ),
                               ),
-                            )
-                          : ListView(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              physics: const BouncingScrollPhysics(),
-                              children: [
-
-                                // Feed Header
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'Active Bulletins (${_alerts.length})',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                        color: onBg,
+                            ],
+                          )
+                        : _alerts.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: [
+                                  SizedBox(
+                                    height: MediaQuery.of(context).size.height * 0.55,
+                                    child: Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(24),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(16),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.check_circle_outline_rounded,
+                                                size: 48,
+                                                color: Color(0xFF2E7D32),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            Text(
+                                              'All Routes Clear',
+                                              style: TextStyle(
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w800,
+                                                color: onSurface,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              'No active weather warnings or road blocks reported for $_selectedCity in ${_selectedCategory.displayName}.',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(fontSize: 13, color: onVar),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            OutlinedButton(
+                                              onPressed: () {
+                                                setState(() {
+                                                  _selectedCategory = AlertCategory.all;
+                                                  _selectedCity = 'All Pakistan';
+                                                });
+                                                _loadAlerts(forceRefresh: true);
+                                              },
+                                              child: const Text('View All National Alerts'),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    Text(
-                                      'Live NDMA / PMD Feed',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: onVar,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
+                                ],
+                              )
+                            : ListView(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                physics: const AlwaysScrollableScrollPhysics(
+                                  parent: BouncingScrollPhysics(),
                                 ),
-                                const SizedBox(height: 12),
+                                children: [
+                                  // Feed Header
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Active Bulletins (${_alerts.length})',
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                          color: onBg,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Live NDMA / PMD Feed',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: onVar,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
 
-                                // Alert Cards
-                                ..._alerts.map((alert) {
-                                  final isSelected = _selectedAlert?.id == alert.id;
-                                  return TravelAlertCard(
-                                    alert: alert,
-                                    isSelected: isSelected,
-                                    onTap: () {
-                                      setState(() => _selectedAlert = alert);
-                                      _showAlertDetailSheet(alert);
-                                    },
-                                  );
-                                }),
-                                const SizedBox(height: 24),
-                              ],
-                            ),
+                                  // Alert Cards
+                                  ..._alerts.map((alert) {
+                                    final isSelected = _selectedAlert?.id == alert.id;
+                                    return TravelAlertCard(
+                                      alert: alert,
+                                      isSelected: isSelected,
+                                      onTap: () {
+                                        setState(() => _selectedAlert = alert);
+                                        _showAlertDetailSheet(alert);
+                                      },
+                                    );
+                                  }),
+                                  const SizedBox(height: 24),
+                                ],
+                              ),
+              ),
             ),
+
           ],
         ),
       ),

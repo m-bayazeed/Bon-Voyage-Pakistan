@@ -127,6 +127,9 @@ class MedicalFacility {
   final String emergencyBedStatus;
   final String? city;
   final String? landmarkNearby;
+  final String? directionsUrl;
+  final double? distanceKm;
+  final int? etaMinutes;
 
   const MedicalFacility({
     required this.id,
@@ -147,6 +150,9 @@ class MedicalFacility {
     required this.emergencyBedStatus,
     this.city,
     this.landmarkNearby,
+    this.directionsUrl,
+    this.distanceKm,
+    this.etaMinutes,
   });
 
   Map<String, dynamic> toMap() {
@@ -169,6 +175,9 @@ class MedicalFacility {
       'emergencyBedStatus': emergencyBedStatus,
       'city': city,
       'landmarkNearby': landmarkNearby,
+      'directions_url': directionsUrl,
+      'distance_km': distanceKm,
+      'eta_minutes': etaMinutes,
     };
   }
 
@@ -189,8 +198,8 @@ class MedicalFacility {
       latitude: (map['latitude'] as num?)?.toDouble() ?? 33.6844,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 73.0479,
       address: map['address'] as String? ?? '',
-      distance: map['distance'] as String? ?? '1.2 km',
-      estimatedTravelTime: map['estimatedTravelTime'] as String? ?? '5 mins',
+      distance: map['distance'] as String? ?? (map['distance_km'] != null ? '${map['distance_km']} km' : 'Nearby'),
+      estimatedTravelTime: map['estimatedTravelTime'] as String? ?? (map['eta_minutes'] != null ? '${map['eta_minutes']} mins' : '5 mins'),
       phone: map['phone'] as String? ?? '1122',
       isEmergency: map['isEmergency'] == 1 || map['isEmergency'] == true,
       isOpen: map['isOpen'] == 1 || map['isOpen'] == true,
@@ -201,6 +210,9 @@ class MedicalFacility {
       emergencyBedStatus: map['emergencyBedStatus'] as String? ?? 'Available',
       city: map['city'] as String?,
       landmarkNearby: map['landmarkNearby'] as String?,
+      directionsUrl: map['directions_url'] as String? ?? map['directionsUrl'] as String?,
+      distanceKm: (map['distance_km'] as num?)?.toDouble() ?? (map['distanceKm'] as num?)?.toDouble(),
+      etaMinutes: (map['eta_minutes'] as num?)?.toInt() ?? (map['etaMinutes'] as num?)?.toInt(),
     );
   }
 }

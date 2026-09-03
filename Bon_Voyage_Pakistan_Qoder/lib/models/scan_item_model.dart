@@ -39,7 +39,7 @@ class ScanItem {
     required this.timestamp,
     required this.scanType,
     this.imagePath,
-    this.searchStatus = 'Identified',
+    this.searchStatus = 'Pending',
     this.imagePlaceholderAsset = 'assets/images/onboarding1.png',
     this.isFavorite = false,
   });
@@ -134,7 +134,7 @@ class ScanItem {
       identifiedLocation: map['identifiedLocation'] as String? ?? map['title'] as String?,
       location: map['location'] as String? ?? 'Pakistan',
       category: map['category'] as String? ?? 'Heritage Site',
-      confidenceScore: (map['confidenceScore'] as num?)?.toDouble() ?? 0.95,
+      confidenceScore: (map['confidenceScore'] as num?)?.toDouble() ?? 0.0,
       shortDescription: map['shortDescription'] as String? ?? '',
       historicalStory: map['historicalStory'] as String? ?? '',
       keyFacts: parseList(map['keyFacts']),
@@ -147,7 +147,7 @@ class ScanItem {
           ? ScanType.upload
           : ScanType.camera,
       imagePath: map['imagePath'] as String?,
-      searchStatus: map['searchStatus'] as String? ?? 'Identified',
+      searchStatus: map['searchStatus'] as String? ?? 'Pending',
       imagePlaceholderAsset:
           map['imagePlaceholderAsset'] as String? ?? 'assets/images/onboarding1.png',
       isFavorite: map['isFavorite'] == 1 || map['isFavorite'] == true,

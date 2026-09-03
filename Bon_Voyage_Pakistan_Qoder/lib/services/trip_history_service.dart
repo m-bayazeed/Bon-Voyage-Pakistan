@@ -63,6 +63,23 @@ class TripHistoryService {
     }
   }
 
+  /// Retrieve the single latest finalized trip plan for the user, if one exists.
+  static Future<TripPlan?> getLatestFinalizedPlan({int? userId}) async {
+    try {
+      final plans = await getSavedTripPlans(userId: userId);
+      final finalizedPlans = plans.where((p) => p.isFinalized).toList();
+      if (finalizedPlans.isEmpty) {
+        return null;
+      }
+      // Sort by creation date descending to ensure newest
+      finalizedPlans.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return finalizedPlans.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+
   /// Delete a saved trip plan by id for the current user.
   static Future<bool> deleteTripPlan(String planId, {int? userId}) async {
     try {

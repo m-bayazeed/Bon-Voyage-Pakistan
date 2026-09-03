@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
 import '../models/travel_alert_model.dart';
 import 'auth_service.dart';
 import 'hotel_location_service.dart';
@@ -18,185 +22,205 @@ abstract class AlertDataProvider {
   List<String> getSupportedCities();
 }
 
-/// Rich curated data provider representing authentic Pakistani travel alerts from NDMA, PMD, and NHMP.
-class CuratedAlertDataProvider implements AlertDataProvider {
-  @override
-  List<String> getSupportedCities() => const [
-        'All Pakistan',
-        'Hunza Valley',
-        'Naran & Kaghan',
-        'Skardu & Baltistan',
-        'Swat & Kalam',
-        'Murree & Galiyat',
-        'Islamabad',
-        'Lahore',
-        'Karachi',
-        'Peshawar',
-        'Quetta & Ziarat',
-      ];
+/// Production FastAPI Backend Alert Data Provider.
+/// Connects to `/api/v1/notifications` (FastAPI on Port 8000) with SQLite caching,
+/// live Open-Meteo weather hazards, USGS seismic feeds, and authentic corridor advisories.
+/// Uses persistent local storage cache and authentic static offline fallbacks for instant startup.
+class BackendAlertDataProvider implements AlertDataProvider {
+  static const String _cacheKey = 'bvp_cached_authentic_alerts_v2';
+  static const String _lastSyncKey = 'bvp_alerts_last_sync_timestamp';
+  static String? _cachedWorkingHost;
 
-  static final List<TravelAlert> _dataset = [
+  static const List<String> _supportedCities = [
+    'All Pakistan',
+    'Hunza Valley',
+    'Naran & Kaghan',
+    'Skardu & Baltistan',
+    'Swat & Kalam',
+    'Murree & Galiyat',
+    'Islamabad',
+    'Lahore',
+    'Karachi',
+    'Peshawar',
+    'Quetta & Ziarat',
+  ];
+
+  /// Curated, authentic standing advisories safely served during offline cold starts.
+  /// Clearly labeled as standing offline fallback advisories with real official helplines.
+  static final List<TravelAlert> staticOfflineAdvisories = [
     TravelAlert(
-      id: 'ALT-KKH-001',
+      id: 'ALT-OFFLINE-001',
       type: AlertCategory.roadCondition,
       severity: AlertSeverity.critical,
-      title: 'Karakoram Highway Landslide Clearance',
-      description:
-          'A rocky landslide has blocked the Karakoram Highway (KKH) near Attabad. Frontier Works Organisation (FWO) machinery is actively clearing the road.',
-      location: 'KKH Section near Attabad Tunnel, Upper Hunza',
+      title: 'Karakoram Highway Landslide Clearance Protocol',
+      description: 'Active rock slippage and debris clearance operations along mountain sections of KKH. Frontier Works Organisation (FWO) machinery on standby.',
+      location: 'KKH Attabad & Kohistan Corridors',
       city: 'Hunza Valley',
       latitude: 36.3350,
       longitude: 74.8050,
-      createdAt: DateTime.now().subtract(const Duration(minutes: 35)),
-      source: 'Frontier Works Organisation (FWO) & District Administration',
-      recommendedAction:
-          'Avoid travel toward Upper Hunza until full clearance. Contact Gilgit-Baltistan Tourist Police helpline (1422) for live status.',
+      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+      source: 'Frontier Works Organisation (FWO) & Tourist Police (Offline Fallback)',
+      recommendedAction: 'Dial Gilgit-Baltistan Tourist Police Helpline (1422) for live convoy clearance status prior to departure.',
+      isRead: false,
+      details: const {
+        'is_offline_fallback': true,
+        'official_helpline': '1422',
+        'agency': 'FWO / GB Police',
+      },
     ),
     TravelAlert(
-      id: 'ALT-BAB-002',
+      id: 'ALT-OFFLINE-002',
       type: AlertCategory.weather,
-      severity: AlertSeverity.critical,
-      title: 'Babusar Pass Snowfall & Road Closure',
-      description:
-          'Heavy snowfall and black ice have rendered Babusar Top impassable. The pass is temporarily closed for all vehicular traffic.',
-      location: 'Babusar Pass Summit (Elevation 13,691 ft), Kaghan Valley',
+      severity: AlertSeverity.high,
+      title: 'Babusar Pass High-Altitude Snow & Ice Protocol',
+      description: 'High altitude snowfall and sub-zero black ice render Babusar Top slippery. Seasonal pass timings apply.',
+      location: 'Babusar Pass Summit (Elevation 13,691 ft)',
       city: 'Naran & Kaghan',
       latitude: 35.1500,
       longitude: 74.0500,
       createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      source: 'National Disaster Management Authority (NDMA)',
-      recommendedAction:
-          'Use the alternative Karakoram Highway (via Kohistan & Chilas) for travel between Rawalpindi/Islamabad and Gilgit.',
+      source: 'National Disaster Management Authority - NDMA (Offline Fallback)',
+      recommendedAction: 'Use the alternative Karakoram Highway via Kohistan/Chilas for heavy transport or during inclement weather.',
+      isRead: false,
+      details: const {
+        'is_offline_fallback': true,
+        'official_helpline': '051-9205037',
+        'agency': 'NDMA',
+      },
     ),
     TravelAlert(
-      id: 'ALT-SKD-003',
+      id: 'ALT-OFFLINE-003',
       type: AlertCategory.roadCondition,
       severity: AlertSeverity.high,
-      title: 'Jaglot-Skardu Road Falling Stones Watch',
-      description:
-          'Intermittent rock falling reported near Astak Nala due to recent rainfall. Single-lane traffic open under police monitoring.',
+      title: 'Jaglot-Skardu Strategic Highway Precaution',
+      description: 'Rock falling watch near Astak Nala due to temperature variations. Highway is monitored under police control.',
       location: 'Jaglot-Skardu Highway at Astak Nala',
       city: 'Skardu & Baltistan',
       latitude: 35.5800,
       longitude: 74.9200,
-      createdAt: DateTime.now().subtract(const Duration(hours: 4)),
-      source: 'National Highway Authority (NHA) Control Room',
-      recommendedAction:
-          'Drive with extreme caution during daytime only. Avoid nighttime commuting along the gorge.',
+      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
+      source: 'National Highway Authority - NHA (Offline Fallback)',
+      recommendedAction: 'Commute during daylight hours only. Maintain a safe distance from steep rock faces in the Indus gorge.',
+      isRead: false,
+      details: const {
+        'is_offline_fallback': true,
+        'official_helpline': '130',
+        'agency': 'NHA',
+      },
     ),
     TravelAlert(
-      id: 'ALT-SWT-004',
-      type: AlertCategory.naturalDisaster,
-      severity: AlertSeverity.high,
-      title: 'River Swat Water Level Alert',
-      description:
-          'Due to glacier melt and upper catchment rainfall, River Swat water flow has increased to medium-flood level near Kalam and Madyan.',
-      location: 'Riverside Areas of Kalam, Madyan & Bahrain',
-      city: 'Swat & Kalam',
-      latitude: 35.4800,
-      longitude: 72.5800,
-      createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-      source: 'Provincial Disaster Management Authority (PDMA Khyber Pakhtunkhwa)',
-      recommendedAction:
-          'Refrain from setting up camps directly on riverbanks or gravel islands. Adhere to local administration safety advisories.',
-    ),
-    TravelAlert(
-      id: 'ALT-MUR-005',
-      type: AlertCategory.weather,
-      severity: AlertSeverity.moderate,
-      title: 'Dense Fog & Snow Chains Requirement',
-      description:
-          'Dense fog reduces visibility to under 50 meters between Lower Topa and Changla Gali. Sub-zero temperatures causing black ice.',
-      location: 'Murree Expressway (N-75) & Galiyat Belt',
-      city: 'Murree & Galiyat',
-      latitude: 33.9060,
-      longitude: 73.3900,
-      createdAt: DateTime.now().subtract(const Duration(hours: 8)),
-      source: 'National Highways & Motorway Police (NHMP Sector M-75)',
-      recommendedAction:
-          'Keep vehicle fog lights on, maintain generous following distance, and ensure functional tire chains for Galiyat ascents.',
-    ),
-    TravelAlert(
-      id: 'ALT-ISB-006',
-      type: AlertCategory.roadCondition,
-      severity: AlertSeverity.moderate,
-      title: 'Margalla Hills Trail Maintenance & Mud Slippage',
-      description:
-          'Trail 3 and Pir Sohawa uphill road experiencing minor mud runoff following evening showers. Cyclists and motorists advised to slow down.',
-      location: 'Pir Sohawa Road, Margalla Foothills, Islamabad',
-      city: 'Islamabad',
-      latitude: 33.7480,
-      longitude: 73.0640,
-      createdAt: DateTime.now().subtract(const Duration(hours: 12)),
-      source: 'Capital Development Authority (CDA Environment Wing)',
-      recommendedAction:
-          'Use lower gear on steep bends and stay within marked speed limits.',
-    ),
-    TravelAlert(
-      id: 'ALT-LHE-007',
+      id: 'ALT-OFFLINE-004',
       type: AlertCategory.advisory,
       severity: AlertSeverity.moderate,
-      title: 'M-2 Motorway Winter Fog Timings Advisory',
-      description:
-          'Thick smog and night fog expected across Punjab plains. M-2 Motorway (Lahore to Islamabad) may experience night closures for traveler safety.',
-      location: 'M-2 Motorway Interchange Toll Plaza, Lahore',
+      title: 'Motorway Travel Advisory & Fog Guidelines',
+      description: 'Smog and seasonal night fog affect visibility across Punjab plains. Night convoy timings may be activated by Motorway Police.',
+      location: 'M-2, M-3 & M-5 Motorway Corridors',
       city: 'Lahore',
       latitude: 31.5200,
       longitude: 74.3580,
-      createdAt: DateTime.now().subtract(const Duration(hours: 16)),
-      source: 'National Highways & Motorway Police (NHMP Central Zone)',
-      recommendedAction:
-          'Plan travel between 10:00 AM and 05:00 PM. Dial 130 for real-time motorway opening updates before departure.',
+      createdAt: DateTime.now().subtract(const Duration(hours: 4)),
+      source: 'National Highways & Motorway Police - NHMP (Offline Fallback)',
+      recommendedAction: 'Plan journeys between 10:00 AM and 05:00 PM. Dial 130 for real-time motorway status before departure.',
+      isRead: false,
+      details: const {
+        'is_offline_fallback': true,
+        'official_helpline': '130',
+        'agency': 'NHMP',
+      },
     ),
     TravelAlert(
-      id: 'ALT-KHI-008',
-      type: AlertCategory.weather,
+      id: 'ALT-OFFLINE-005',
+      type: AlertCategory.publicSafety,
       severity: AlertSeverity.informational,
-      title: 'Arabian Sea High Tide & Coastal Breeze',
-      description:
-          'High tidal waves and gusty southwestern winds forecast along Clifton and Manora coasts. Beach swimming temporarily discouraged.',
-      location: 'Clifton Beach, Do Darya & Hawke’s Bay, Karachi',
-      city: 'Karachi',
-      latitude: 24.7720,
-      longitude: 67.0780,
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      source: 'Pakistan Meteorological Department (PMD Marine Centre)',
-      recommendedAction:
-          'Enjoy coastal dining from designated seaside promenades; follow lifeguard beach flags.',
-    ),
-    TravelAlert(
-      id: 'ALT-QTA-009',
-      type: AlertCategory.weather,
-      severity: AlertSeverity.informational,
-      title: 'Ziarat Valley Cold Wave & Frost Advisory',
-      description:
-          'Night temperatures dropping to -4°C across Ziarat Juniper Forest. Morning frost on provincial highway bends.',
-      location: 'Ziarat Valley & Juniper Biosphere Reserve',
-      city: 'Quetta & Ziarat',
-      latitude: 30.3800,
-      longitude: 67.7200,
-      createdAt: DateTime.now().subtract(const Duration(days: 1, hours: 4)),
-      source: 'Balochistan Disaster Management Authority (PDMA)',
-      recommendedAction:
-          'Ensure vehicle antifreeze is topped up and pack thermal mountain apparel for excursions.',
-    ),
-    TravelAlert(
-      id: 'ALT-PSH-010',
-      type: AlertCategory.roadCondition,
-      severity: AlertSeverity.informational,
-      title: 'Ring Road Northern Bypass Traffic Diversion',
-      description:
-          'Bridge expansion joints maintenance in progress on Peshawar Northern Bypass. Minor diversions active via service lane.',
-      location: 'Peshawar Northern Bypass, Khyber Pakhtunkhwa',
-      city: 'Peshawar',
-      latitude: 34.0150,
-      longitude: 71.5800,
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      source: 'Peshawar Traffic Police & Highway Authority',
-      recommendedAction:
-          'Follow traffic warden signals for smooth bypass transit.',
+      title: 'Emergency Medical & Disaster Rescue Helpline 1122',
+      description: 'Punjab, KP, and GB Emergency Ambulance and Rescue Services are active 24/7 across major travel hubs.',
+      location: 'Nationwide Travel Corridors',
+      city: 'All Pakistan',
+      latitude: 33.6844,
+      longitude: 73.0479,
+      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
+      source: 'Emergency Rescue 1122 (Offline Fallback)',
+      recommendedAction: 'Dial 1122 toll-free from any mobile or landline across Pakistan for emergency medical assistance.',
+      isRead: false,
+      details: const {
+        'is_offline_fallback': true,
+        'official_helpline': '1122',
+        'agency': 'Rescue 1122',
+      },
     ),
   ];
+
+  @override
+  List<String> getSupportedCities() => _supportedCities;
+
+  /// Load cached authentic alerts from local storage, or return static offline advisories if cache is empty.
+  static Future<List<TravelAlert>> loadCachedAlerts({
+    String? city,
+    double? userLat,
+    double? userLng,
+    AlertCategory? category,
+    AlertSeverity? severity,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawJson = prefs.getString(_cacheKey);
+      
+      List<TravelAlert> list;
+      if (rawJson != null && rawJson.isNotEmpty) {
+        final List<dynamic> decoded = json.decode(rawJson) as List<dynamic>;
+        list = decoded
+            .map((item) => TravelAlert.fromJson(item as Map<String, dynamic>))
+            .toList();
+      } else {
+        // Cold-start seed: Serve authentic static offline advisories
+        list = List<TravelAlert>.from(staticOfflineAdvisories);
+      }
+
+      return _filterAlerts(
+        alerts: list,
+        city: city,
+        userLat: userLat,
+        userLng: userLng,
+        category: category,
+        severity: severity,
+      );
+    } catch (e) {
+      debugPrint('[Notifications] Local alert cache read error: $e');
+      return _filterAlerts(
+        alerts: staticOfflineAdvisories,
+        city: city,
+        userLat: userLat,
+        userLng: userLng,
+        category: category,
+        severity: severity,
+      );
+    }
+  }
+
+  /// Save authentic alerts to local storage.
+  static Future<void> saveToCache(List<TravelAlert> alerts) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = json.encode(alerts.map((a) => a.toJson()).toList());
+      await prefs.setString(_cacheKey, encoded);
+      await prefs.setInt(_lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (e) {
+      debugPrint('[Notifications] Local alert cache save error: $e');
+    }
+  }
+
+  /// Check whether the local cache is stale (>15 minutes old or empty).
+  static Future<bool> isCacheStale() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastSync = prefs.getInt(_lastSyncKey);
+      if (lastSync == null) return true;
+      final diff = DateTime.now().millisecondsSinceEpoch - lastSync;
+      return diff > (15 * 60 * 1000); // 15 minutes
+    } catch (_) {
+      return true;
+    }
+  }
 
   @override
   Future<List<TravelAlert>> fetchAlerts({
@@ -206,10 +230,113 @@ class CuratedAlertDataProvider implements AlertDataProvider {
     AlertCategory? category,
     AlertSeverity? severity,
   }) async {
-    // Realistic micro-delay for API readiness
-    await Future.delayed(const Duration(milliseconds: 300));
+    final candidateHosts = ApiConfig.candidateHosts;
+    final candidatePorts = ApiConfig.candidatePorts;
+    final endpointsToTry = <String>[];
 
-    var results = List<TravelAlert>.from(_dataset);
+    // Try cached working endpoint first
+    if (_cachedWorkingHost != null && _cachedWorkingHost!.startsWith('http')) {
+      endpointsToTry.add(_cachedWorkingHost!);
+    }
+
+    for (final host in candidateHosts) {
+      for (final port in candidatePorts) {
+        final ep = 'http://$host:$port/api/v1/notifications';
+        if (!endpointsToTry.contains(ep)) {
+          endpointsToTry.add(ep);
+        }
+      }
+    }
+
+    final queryParams = <String, String>{};
+    if (city != null &&
+        city.isNotEmpty &&
+        city.toLowerCase() != 'all pakistan' &&
+        !city.toLowerCase().contains('current location') &&
+        !city.toLowerCase().contains('gps')) {
+      queryParams['city'] = city;
+    }
+    if (userLat != null && userLng != null) {
+      queryParams['lat'] = userLat.toString();
+      queryParams['lon'] = userLng.toString();
+    }
+    if (category != null && category != AlertCategory.all) {
+      queryParams['category'] = category.name;
+    }
+    if (severity != null) {
+      queryParams['severity'] = severity.name;
+    }
+
+    for (final endpoint in endpointsToTry) {
+      final baseUri = Uri.parse(endpoint);
+      final uri = queryParams.isEmpty ? baseUri : baseUri.replace(queryParameters: queryParams);
+
+      try {
+        debugPrint('[Notifications] Attempting backend: $uri');
+        // Increased timeout from 4s to 10s for robust network response
+        final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+          final rawList = data['alerts'] as List<dynamic>? ?? [];
+          final alerts = rawList
+              .map((item) => TravelAlert.fromJson(item as Map<String, dynamic>))
+              .toList();
+
+          _cachedWorkingHost = endpoint;
+          debugPrint('[Notifications] Successfully loaded ${alerts.length} live alerts from FastAPI backend at $endpoint');
+
+          // Persist the authentic live alerts in local cache
+          if (queryParams.isEmpty && alerts.isNotEmpty) {
+            await saveToCache(alerts);
+          }
+
+          return alerts;
+        } else {
+          debugPrint('[Notifications] Backend HTTP ${response.statusCode} at $endpoint: ${response.body}');
+        }
+
+      } on TimeoutException {
+        debugPrint('[Notifications] Backend unavailable: Timeout (10s) at $endpoint');
+      } on SocketException catch (e) {
+        debugPrint('[Notifications] Backend unavailable: Socket error at $endpoint (${e.message})');
+      } on http.ClientException catch (e) {
+        debugPrint('[Notifications] Backend unavailable: Client connection error at $endpoint (${e.message})');
+      } catch (e) {
+        debugPrint('[Notifications] Backend alert fetch failed at $endpoint: $e');
+      }
+    }
+
+
+    debugPrint('[Notifications] All backend hosts unreachable. Falling back to local cache / static offline advisories.');
+    return loadCachedAlerts(
+      city: city,
+      userLat: userLat,
+      userLng: userLng,
+      category: category,
+      severity: severity,
+    );
+  }
+
+  /// Internal filtering for cached and offline alerts
+  static List<TravelAlert> _filterAlerts({
+    required List<TravelAlert> alerts,
+    String? city,
+    double? userLat,
+    double? userLng,
+    AlertCategory? category,
+    AlertSeverity? severity,
+  }) {
+    var results = List<TravelAlert>.from(alerts);
+
+    // Filter out expired alerts
+    final now = DateTime.now();
+    results = results.where((a) {
+      if (a.expiresAt != null && a.expiresAt!.isBefore(now)) {
+        return false;
+      }
+      return true;
+    }).toList();
 
     // 1. City / Region filter
     if (city != null &&
@@ -222,7 +349,9 @@ class CuratedAlertDataProvider implements AlertDataProvider {
         final alertLoc = a.location.toLowerCase();
         return alertCity.contains(normalized) ||
             normalized.contains(alertCity) ||
-            alertLoc.contains(normalized);
+            alertLoc.contains(normalized) ||
+            alertCity == 'all pakistan' ||
+            alertCity == 'national';
       }).toList();
     }
 
@@ -249,9 +378,9 @@ class CuratedAlertDataProvider implements AlertDataProvider {
 
 /// Service coordinating alert querying, user-scoped read tracking, and live location filtering.
 class TravelAlertService {
-  static AlertDataProvider _provider = CuratedAlertDataProvider();
+  static AlertDataProvider _provider = BackendAlertDataProvider();
 
-  /// Change data provider (e.g. live NDMA / PMD REST API).
+  /// Change data provider (e.g. live REST API).
   static void setProvider(AlertDataProvider provider) {
     _provider = provider;
   }
@@ -287,6 +416,67 @@ class TravelAlertService {
     } catch (_) {}
   }
 
+  /// Retrieve locally cached authentic alerts immediately without waiting for network.
+  static Future<List<TravelAlert>> getCachedAlerts({
+    String? city,
+    double? userLat,
+    double? userLng,
+    AlertCategory category = AlertCategory.all,
+    AlertSeverity? severity,
+    int? userId,
+  }) async {
+    try {
+      final cached = await BackendAlertDataProvider.loadCachedAlerts(
+        city: city,
+        userLat: userLat,
+        userLng: userLng,
+        category: category,
+        severity: severity,
+      );
+
+      final currentUserId = userId ?? await AuthService.getUserId();
+      final readIds = await _getReadAlertIds(userId: currentUserId);
+
+      return cached.map((a) => a.copyWith(isRead: readIds.contains(a.id))).toList();
+    } catch (e) {
+      debugPrint('[Notifications] Error loading cached alerts: $e');
+      return [];
+    }
+  }
+
+  /// Triggers a non-blocking background refresh of notifications from backend.
+  static Future<void> refreshAlertsInBackground() async {
+    try {
+      debugPrint('[Notifications] Background refresh started...');
+      final candidateHosts = ApiConfig.candidateHosts;
+      final candidatePorts = ApiConfig.candidatePorts;
+      for (final host in candidateHosts) {
+        for (final port in candidatePorts) {
+          try {
+            final uri = Uri.parse('http://$host:$port/api/v1/notifications');
+            final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+            if (response.statusCode == 200) {
+              final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+              final rawList = data['alerts'] as List<dynamic>? ?? [];
+              final alerts = rawList
+                  .map((item) => TravelAlert.fromJson(item as Map<String, dynamic>))
+                  .toList();
+              if (alerts.isNotEmpty) {
+                await BackendAlertDataProvider.saveToCache(alerts);
+                debugPrint('[Notifications] Background refresh succeeded: ${alerts.length} alerts cached.');
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+    } catch (e) {
+      debugPrint('[Notifications] Background refresh notice: $e');
+    }
+  }
+
   /// Fetch alerts with active user read-state synchronization.
   static Future<List<TravelAlert>> getAlerts({
     String? city,
@@ -294,9 +484,10 @@ class TravelAlertService {
     AlertCategory category = AlertCategory.all,
     AlertSeverity? severity,
     int? userId,
+    bool forceRefresh = false,
   }) async {
     try {
-      debugPrint('ALERTS LOAD STARTED: city=$city, useGPS=$useCurrentLocation, cat=${category.name}');
+      debugPrint('[Notifications] Fetch initiated: city=$city, useGPS=$useCurrentLocation, cat=${category.name}, forceRefresh=$forceRefresh');
 
       double? userLat;
       double? userLng;
@@ -305,7 +496,7 @@ class TravelAlertService {
         final pos = await HotelLocationService.getCurrentLocation();
         userLat = pos.latitude;
         userLng = pos.longitude;
-        debugPrint('ALERT LOCATION (GPS): $userLat, $userLng');
+        debugPrint('[Notifications] GPS Location: $userLat, $userLng');
       }
 
       final rawAlerts = await _provider.fetchAlerts(
@@ -323,12 +514,20 @@ class TravelAlertService {
         return a.copyWith(isRead: readIds.contains(a.id));
       }).toList();
 
-      debugPrint('ALERTS RECEIVED: ${mapped.length} alerts loaded.');
+      debugPrint('[Notifications] Total alerts available: ${mapped.length}');
       return mapped;
     } catch (e, stackTrace) {
-      debugPrint('ALERT API ERROR: $e');
+      debugPrint('[Notifications] Alert service error: $e');
       debugPrintStack(stackTrace: stackTrace);
-      rethrow;
+      // Fail-safe: Always return cached or static offline fallback
+      return getCachedAlerts(
+        city: city,
+        userLat: null,
+        userLng: null,
+        category: category,
+        severity: severity,
+        userId: userId,
+      );
     }
   }
 

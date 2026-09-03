@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/food_place_model.dart';
 import '../services/food_navigation_service.dart';
 import '../services/food_service.dart';
+import '../services/hotel_location_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/food_place_card.dart';
@@ -10,7 +11,9 @@ import '../widgets/theme_toggle.dart';
 
 /// Premier Food & Dining screen for exploring culinary destinations across Pakistan.
 class FoodDiningScreen extends StatefulWidget {
-  const FoodDiningScreen({super.key});
+  final String? initialCity;
+
+  const FoodDiningScreen({super.key, this.initialCity});
 
   @override
   State<FoodDiningScreen> createState() => _FoodDiningScreenState();
@@ -18,25 +21,61 @@ class FoodDiningScreen extends StatefulWidget {
 
 class _FoodDiningScreenState extends State<FoodDiningScreen> {
   // Search & Filter State
-  String _selectedCity = 'Islamabad';
+  late String _selectedCity;
   bool _useCurrentLocation = false;
   FoodCategory _selectedCategory = FoodCategory.all;
   FoodSortOption _selectedSort = FoodSortOption.rating;
 
+
+  // Real-world Location Separation
+  double? _deviceGpsLat;
+  double? _deviceGpsLng;
+  double? _searchCenterLat;
+  double? _searchCenterLng;
+
   // Data & View State
   List<FoodPlace> _places = [];
   FoodPlace? _selectedPlace;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _hasSearched = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _loadFoodPlaces();
+    _selectedCity = widget.initialCity ?? 'Islamabad';
+    _initLocationAndLoad();
+  }
+
+
+  Future<void> _initLocationAndLoad() async {
+    try {
+      final pos = await HotelLocationService.getCurrentLocation();
+      if (mounted) {
+        setState(() {
+          _deviceGpsLat = pos.latitude;
+          _deviceGpsLng = pos.longitude;
+        });
+      }
+    } catch (_) {}
+
+    // Resolve initial city center coordinates
+    try {
+      final point = await HotelLocationService.resolveDestination(_selectedCity);
+      if (mounted) {
+        setState(() {
+          _searchCenterLat = point.latitude;
+          _searchCenterLng = point.longitude;
+        });
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadFoodPlaces() async {
     setState(() {
+      _hasSearched = true;
       _isLoading = true;
       _errorMessage = null;
     });
@@ -47,6 +86,10 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
         useCurrentLocation: _useCurrentLocation,
         category: _selectedCategory,
         sortOption: _selectedSort,
+        userLat: _deviceGpsLat,
+        userLng: _deviceGpsLng,
+        searchLat: _searchCenterLat,
+        searchLng: _searchCenterLng,
       );
 
       if (mounted) {
@@ -57,10 +100,33 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
         });
       }
     } catch (e) {
+      // Auto-retry once silently after 300ms before ever showing an error
+      try {
+        await Future.delayed(const Duration(milliseconds: 300));
+        final retryResults = await FoodService.searchFoodPlaces(
+          city: _selectedCity,
+          useCurrentLocation: _useCurrentLocation,
+          category: _selectedCategory,
+          sortOption: _selectedSort,
+          userLat: _deviceGpsLat,
+          userLng: _deviceGpsLng,
+          searchLat: _searchCenterLat,
+          searchLng: _searchCenterLng,
+        );
+        if (mounted) {
+          setState(() {
+            _places = retryResults;
+            _isLoading = false;
+            _selectedPlace = retryResults.isNotEmpty ? retryResults.first : null;
+          });
+          return;
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Failed to load food places. Please check your connection.';
+          _errorMessage = 'Unable to load nearby places. Please try again.';
         });
       }
     }
@@ -132,8 +198,20 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                   setState(() {
                     _useCurrentLocation = true;
                     _selectedCity = 'Current Location (GPS)';
+                    _searchCenterLat = _deviceGpsLat;
+                    _searchCenterLng = _deviceGpsLng;
                   });
-                  _loadFoodPlaces();
+                  if (_hasSearched) {
+                    _loadFoodPlaces();
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Selected Current Location. Tap "Search Food" to find nearby spots.'),
+                        backgroundColor: AppTheme.primary,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
@@ -234,13 +312,33 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                       trailing: isSelected
                           ? const Icon(Icons.check_rounded, color: AppTheme.primary, size: 18)
                           : null,
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(ctx);
                         setState(() {
                           _useCurrentLocation = false;
                           _selectedCity = city;
                         });
-                        _loadFoodPlaces();
+                        try {
+                          final point = await HotelLocationService.resolveDestination(city);
+                          if (mounted) {
+                            setState(() {
+                              _searchCenterLat = point.latitude;
+                              _searchCenterLng = point.longitude;
+                            });
+                          }
+                        } catch (_) {}
+                        if (!mounted) return;
+                        if (_hasSearched) {
+                          _loadFoodPlaces();
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Selected "$city". Tap "Search Food" to discover restaurants.'),
+                              backgroundColor: AppTheme.primary,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
                       },
                     ),
                   );
@@ -402,7 +500,9 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
               const SizedBox(height: 14),
 
               // Timing & Cost Chips
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -424,7 +524,6 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
@@ -584,7 +683,12 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                     child: ElevatedButton.icon(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        FoodNavigationService.showNavigationModal(context, place);
+                        FoodNavigationService.showNavigationModal(
+                          context,
+                          place,
+                          userLat: _deviceGpsLat,
+                          userLng: _deviceGpsLng,
+                        );
                       },
                       icon: const Icon(Icons.directions_rounded, size: 18),
                       label: const Text(
@@ -786,7 +890,9 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                           onChanged: (newCat) {
                             if (newCat != null && newCat != _selectedCategory) {
                               setState(() => _selectedCategory = newCat);
-                              _loadFoodPlaces();
+                              if (_hasSearched) {
+                                _loadFoodPlaces();
+                              }
                             }
                           },
                         ),
@@ -841,7 +947,9 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                           onChanged: (newSort) {
                             if (newSort != null && newSort != _selectedSort) {
                               setState(() => _selectedSort = newSort);
-                              _loadFoodPlaces();
+                              if (_hasSearched) {
+                                _loadFoodPlaces();
+                              }
                             }
                           },
                         ),
@@ -852,10 +960,130 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
               ),
             ),
 
+            // Manual "Search Food" Button (matching Hotels page)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _loadFoodPlaces,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Icon(Icons.travel_explore_rounded, size: 20),
+                  label: Text(
+                    _isLoading
+                        ? 'Finding Food Spots...'
+                        : 'Search Food in ${_useCurrentLocation ? "Current Location" : _selectedCity}',
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: AppTheme.onPrimary,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ),
+            ),
+
             // 3. Main Content (Map & Results List)
             Expanded(
-              child: _isLoading
-                  ? const Center(
+              child: !_hasSearched && !_isLoading
+                  ? SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          InteractiveFoodMap(
+                            places: const [],
+                            centerLat: _searchCenterLat,
+                            centerLng: _searchCenterLng,
+                            userLat: _deviceGpsLat,
+                            userLng: _deviceGpsLng,
+                            onPlaceSelected: (p) => setState(() => _selectedPlace = p),
+                            height: 220,
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+                            decoration: BoxDecoration(
+                              color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: AppTheme.primary.withValues(alpha: 0.25),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary.withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.restaurant_rounded, size: 38, color: AppTheme.primary),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Discover Food in ${_useCurrentLocation ? "Current Location" : _selectedCity}',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                    color: onBg,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Select your preferred cuisine and sorting option above, then tap "Search Food" to find verified restaurants, dhabas, and cafés with live road distance and route ETA.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.45,
+                                    color: onVar,
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                ElevatedButton.icon(
+                                  onPressed: _loadFoodPlaces,
+                                  icon: const Icon(Icons.search_rounded, size: 18),
+                                  label: Text(
+                                    'Search Food in ${_useCurrentLocation ? "Current Location" : _selectedCity}',
+                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primary,
+                                    foregroundColor: AppTheme.onPrimary,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    elevation: 2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _isLoading
+                      ? const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -906,7 +1134,7 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                                     const Icon(Icons.restaurant_rounded, size: 48, color: AppTheme.primary),
                                     const SizedBox(height: 12),
                                     Text(
-                                      'No food places found for $_selectedCity in ${_selectedCategory.displayName}.',
+                                      'No suitable places found within the selected radius.',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(fontSize: 14, color: onVar),
                                     ),
@@ -932,8 +1160,12 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                                 InteractiveFoodMap(
                                   places: _places,
                                   selectedPlace: _selectedPlace,
+                                  centerLat: _searchCenterLat,
+                                  centerLng: _searchCenterLng,
+                                  userLat: _deviceGpsLat,
+                                  userLng: _deviceGpsLng,
                                   onPlaceSelected: (p) => setState(() => _selectedPlace = p),
-                                  height: 220,
+                                  height: 240,
                                 ),
                                 const SizedBox(height: 16),
 
@@ -941,14 +1173,19 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      'Nearby Restaurants & Dhabas (${_places.length})',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                        color: onBg,
+                                    Expanded(
+                                      child: Text(
+                                        'Nearby Restaurants & Dhabas (${_places.length})',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                          color: onBg,
+                                        ),
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
                                     Text(
                                       _selectedSort.displayName,
                                       style: const TextStyle(

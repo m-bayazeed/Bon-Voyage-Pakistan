@@ -1,15 +1,23 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+import 'package:url_launcher/url_launcher.dart';
 import '../models/medical_facility_model.dart';
+import '../services/hotel_location_service.dart';
 import '../theme/app_theme.dart';
 
-/// Interactive medical map widget displaying user location, facility markers,
-/// zoom/re-center controls, and a selected facility preview card.
-/// Designed for drop-in replacement with Google Maps / Mapbox in the future.
+/// Real Interactive Vector Tile Map for First Aid & Medical Facilities
+/// with Geoapify OSM Cartography, distinct User GPS beacon, exact facility markers,
+/// zoom controls, and quick card preview.
 class InteractiveMedicalMap extends StatefulWidget {
   final List<MedicalFacility> facilities;
   final MedicalFacility? selectedFacility;
+  final double? centerLat;
+  final double? centerLng;
+  final double? userLat;
+  final double? userLng;
   final ValueChanged<MedicalFacility>? onFacilitySelected;
+  final void Function(MedicalFacility)? onDirectionsTap;
   final VoidCallback? onRecenter;
   final bool isEmergencyActive;
   final double height;
@@ -18,7 +26,12 @@ class InteractiveMedicalMap extends StatefulWidget {
     super.key,
     required this.facilities,
     this.selectedFacility,
+    this.centerLat,
+    this.centerLng,
+    this.userLat,
+    this.userLng,
     this.onFacilitySelected,
+    this.onDirectionsTap,
     this.onRecenter,
     this.isEmergencyActive = false,
     this.height = 280,
@@ -30,53 +43,128 @@ class InteractiveMedicalMap extends StatefulWidget {
 
 class _InteractiveMedicalMapState extends State<InteractiveMedicalMap>
     with SingleTickerProviderStateMixin {
-  double _zoomLevel = 1.0;
-  Offset _panOffset = Offset.zero;
+  late final MapController _mapController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  static const String _geoapifyApiKey = '454af56eb7eb4805ab7fc12bd150891a';
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.35).animate(
+    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.4).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
   @override
+  void didUpdateWidget(covariant InteractiveMedicalMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.centerLat != oldWidget.centerLat ||
+        widget.centerLng != oldWidget.centerLng) {
+      final lat = widget.centerLat ?? widget.userLat ?? 33.6844;
+      final lng = widget.centerLng ?? widget.userLng ?? 73.0479;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          _mapController.move(LatLng(lat, lng), 12.8);
+        } catch (_) {}
+      });
+    } else if (widget.selectedFacility != null &&
+        widget.selectedFacility?.id != oldWidget.selectedFacility?.id) {
+      final sel = widget.selectedFacility!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          _mapController.move(LatLng(sel.latitude, sel.longitude), 14.5);
+        } catch (_) {}
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _pulseController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
   void _zoomIn() {
-    setState(() {
-      _zoomLevel = min(_zoomLevel + 0.25, 2.5);
-    });
+    final center = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(center, (currentZoom + 1).clamp(4.0, 18.0));
   }
 
   void _zoomOut() {
-    setState(() {
-      _zoomLevel = max(_zoomLevel - 0.25, 0.75);
-    });
+    final center = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(center, (currentZoom - 1).clamp(4.0, 18.0));
   }
 
   void _recenter() {
-    setState(() {
-      _panOffset = Offset.zero;
-      _zoomLevel = 1.0;
-    });
+    final lat = widget.centerLat ??
+        widget.userLat ??
+        (widget.facilities.isNotEmpty ? widget.facilities.first.latitude : 33.6844);
+    final lng = widget.centerLng ??
+        widget.userLng ??
+        (widget.facilities.isNotEmpty ? widget.facilities.first.longitude : 73.0479);
+    _mapController.move(LatLng(lat, lng), 13.0);
     widget.onRecenter?.call();
+  }
+
+  Future<void> _launchDirections(MedicalFacility facility) async {
+    try {
+      double originLat;
+      double originLon;
+      if (widget.userLat != null && widget.userLng != null) {
+        originLat = widget.userLat!;
+        originLon = widget.userLng!;
+      } else {
+        final gps = await HotelLocationService.getCurrentLocation();
+        originLat = gps.latitude;
+        originLon = gps.longitude;
+      }
+
+      final urlStr =
+          'https://www.google.com/maps/dir/?api=1&origin=$originLat,$originLon&destination=${facility.latitude},${facility.longitude}&travelmode=driving';
+      final uri = Uri.parse(urlStr);
+
+      debugPrint('\n========== HELP NAVIGATION DEBUG ==========');
+      debugPrint('Origin GPS: $originLat, $originLon');
+      debugPrint('Destination: ${facility.name} (${facility.latitude}, ${facility.longitude})');
+      debugPrint('Directions URL: $urlStr');
+      debugPrint('============================================\n');
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('[HelpMap] Error launching directions: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final searchLat = widget.centerLat ??
+        widget.userLat ??
+        (widget.facilities.isNotEmpty ? widget.facilities.first.latitude : 33.6844);
+    final searchLng = widget.centerLng ??
+        widget.userLng ??
+        (widget.facilities.isNotEmpty ? widget.facilities.first.longitude : 73.0479);
+    final searchCenterPoint = LatLng(searchLat, searchLng);
+
+    final hasUserGps = widget.userLat != null && widget.userLng != null;
+    final userGpsPoint = hasUserGps ? LatLng(widget.userLat!, widget.userLng!) : null;
+    final isSearchSameAsGps = hasUserGps &&
+        (searchLat - widget.userLat!).abs() < 0.001 &&
+        (searchLng - widget.userLng!).abs() < 0.001;
 
     return Container(
       width: double.infinity,
@@ -86,15 +174,15 @@ class _InteractiveMedicalMapState extends State<InteractiveMedicalMap>
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.isEmergencyActive
-              ? Colors.redAccent.withOpacity(0.4)
-              : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
-          width: widget.isEmergencyActive ? 1.8 : 1.0,
+              ? const Color(0xFFE53935).withValues(alpha: 0.6)
+              : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
+          width: widget.isEmergencyActive ? 2.0 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: widget.isEmergencyActive
-                ? Colors.redAccent.withOpacity(0.15)
-                : AppTheme.primary.withOpacity(isDark ? 0.12 : 0.06),
+                ? const Color(0xFFE53935).withValues(alpha: 0.25)
+                : AppTheme.primary.withValues(alpha: isDark ? 0.12 : 0.06),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
@@ -104,183 +192,172 @@ class _InteractiveMedicalMapState extends State<InteractiveMedicalMap>
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // ── Interactive Map Canvas ──
-            GestureDetector(
-              onPanUpdate: (details) {
-                setState(() {
-                  _panOffset += details.delta;
-                });
-              },
-              child: Transform.translate(
-                offset: _panOffset,
-                child: Transform.scale(
-                  scale: _zoomLevel,
-                  child: CustomPaint(
-                    size: Size(double.infinity, widget.height),
-                    painter: _VectorMapPainter(
-                      isDark: isDark,
-                      isEmergency: widget.isEmergencyActive,
+            // ── 1. Real Geoapify OSM-Bright Map Tiles ──
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: searchCenterPoint,
+                initialZoom: 12.5,
+                minZoom: 4.0,
+                maxZoom: 18.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=$_geoapifyApiKey',
+                  fallbackUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.bonvoyage.pakistan',
+                  maxZoom: 19,
+                ),
+
+                // ── 2. Real Geoapify Markers Layer ──
+                MarkerLayer(
+                  markers: [
+                    // Search Center Anchor (when distinct from user GPS)
+                    if (!isSearchSameAsGps)
+                      Marker(
+                        point: searchCenterPoint,
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        child: _SearchCenterRadarPin(pulseAnimation: _pulseAnimation),
+                      ),
+
+                    // Current Device Location GPS Pin
+                    if (userGpsPoint != null)
+                      Marker(
+                        point: userGpsPoint,
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        child: _CurrentUserGpsMarker(pulseAnimation: _pulseAnimation),
+                      ),
+
+                    // Facility Markers at Exact Coordinates
+                    ...widget.facilities.map((fac) {
+                      final isSelected = widget.selectedFacility?.id == fac.id;
+                      return Marker(
+                        point: LatLng(fac.latitude, fac.longitude),
+                        width: 76,
+                        height: 56,
+                        alignment: Alignment.center,
+                        child: _FacilityRealMapMarker(
+                          facility: fac,
+                          isSelected: isSelected,
+                          onTap: () {
+                            _mapController.move(LatLng(fac.latitude, fac.longitude), 14.5);
+                            widget.onFacilitySelected?.call(fac);
+                          },
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ],
+            ),
+
+            // ── 3. Top Info Pill ──
+            Positioned(
+              top: 12,
+              left: 14,
+              right: 64,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: (isDark ? const Color(0xFF1E2624) : Colors.white).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : Colors.black.withValues(alpha: 0.08),
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: widget.isEmergencyActive ? const Color(0xFFE53935) : AppTheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '${widget.facilities.length} Facilities • 30 km radius',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
 
-            // ── Facility Markers Layer ──
-            Positioned.fill(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final center = Offset(
-                    constraints.maxWidth / 2 + _panOffset.dx,
-                    constraints.maxHeight / 2 + _panOffset.dy,
-                  );
-
-                  return Stack(
-                    children: [
-                      // User's Current GPS Location Pin
-                      Positioned(
-                        left: center.dx - 20,
-                        top: center.dy - 20,
-                        child: _UserLocationPin(
-                          pulseAnimation: _pulseAnimation,
-                          isEmergency: widget.isEmergencyActive,
-                        ),
-                      ),
-
-                      // Nearby Facilities Pins
-                      ..._buildFacilityPins(center, constraints),
-                    ],
-                  );
-                },
-              ),
-            ),
-
-            // ── Top Gradient Overlay (Map Tag & GPS Accuracy) ──
+            // ── 4. Map Control Buttons (Recenter & Zoom) ──
             Positioned(
-              top: 10,
-              left: 10,
-              right: 10,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: (isDark ? Colors.black : Colors.white).withOpacity(0.88),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.06),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.greenAccent,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              'Live Medical Radar • GPS High Accuracy',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? Colors.white70 : Colors.black87,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Emergency status badge
-                  if (widget.isEmergencyActive) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.redAccent.withOpacity(0.4),
-                            blurRadius: 8,
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.warning_rounded, color: Colors.white, size: 11),
-                          SizedBox(width: 3),
-                          Text(
-                            'SOS MODE',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // ── Right Side Map Controls (Zoom +, Zoom -, Re-center) ──
-            Positioned(
+              top: 12,
               right: 12,
-              bottom: widget.selectedFacility != null ? 80 : 14,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _MapControlBtn(
-                    icon: Icons.add_rounded,
-                    onTap: _zoomIn,
-                    tooltip: 'Zoom In',
-                  ),
-                  const SizedBox(height: 6),
-                  _MapControlBtn(
-                    icon: Icons.remove_rounded,
-                    onTap: _zoomOut,
-                    tooltip: 'Zoom Out',
-                  ),
-                  const SizedBox(height: 6),
-                  _MapControlBtn(
+                  _MapIconButton(
                     icon: Icons.my_location_rounded,
+                    tooltip: 'Recenter Map',
+                    isDark: isDark,
                     onTap: _recenter,
-                    tooltip: 'Re-center GPS',
-                    highlight: true,
+                  ),
+                  const SizedBox(height: 6),
+                  _MapIconButton(
+                    icon: Icons.add_rounded,
+                    tooltip: 'Zoom In',
+                    isDark: isDark,
+                    onTap: _zoomIn,
+                  ),
+                  const SizedBox(height: 6),
+                  _MapIconButton(
+                    icon: Icons.remove_rounded,
+                    tooltip: 'Zoom Out',
+                    isDark: isDark,
+                    onTap: _zoomOut,
                   ),
                 ],
               ),
             ),
 
-            // ── Bottom Floating Facility Quick Card ──
+            // ── 5. Selected Facility Quick Card Preview ──
             if (widget.selectedFacility != null)
               Positioned(
                 left: 12,
-                right: 58,
+                right: 12,
                 bottom: 12,
-                child: _SelectedFacilityQuickCard(
+                child: _FacilityQuickPreviewCard(
                   facility: widget.selectedFacility!,
+                  isDark: isDark,
+                  onClose: () => widget.onFacilitySelected?.call(widget.facilities.first),
+                  onDirections: () {
+                    widget.onDirectionsTap?.call(widget.selectedFacility!);
+                    _launchDirections(widget.selectedFacility!);
+                  },
                 ),
               ),
           ],
@@ -288,239 +365,223 @@ class _InteractiveMedicalMapState extends State<InteractiveMedicalMap>
       ),
     );
   }
-
-  List<Widget> _buildFacilityPins(Offset center, BoxConstraints constraints) {
-    // Generate deterministic relative coordinates around user center for demonstration
-    final List<Widget> pinWidgets = [];
-
-    for (int i = 0; i < widget.facilities.length; i++) {
-      final facility = widget.facilities[i];
-      final isSelected = widget.selectedFacility?.id == facility.id;
-
-      // Deterministic radial offset based on index
-      final angle = (i * (2 * pi / max(widget.facilities.length, 1))) + 0.35;
-      final distanceRadius = 55.0 + (i % 3) * 35.0;
-
-      final pinDx = center.dx + cos(angle) * distanceRadius * _zoomLevel;
-      final pinDy = center.dy + sin(angle) * distanceRadius * _zoomLevel;
-
-      // Only render pins inside reasonable viewport bounds
-      if (pinDx < -40 || pinDx > constraints.maxWidth + 40 || pinDy < -40 || pinDy > constraints.maxHeight + 40) {
-        continue;
-      }
-
-      pinWidgets.add(
-        Positioned(
-          left: pinDx - 16,
-          top: pinDy - 32,
-          child: GestureDetector(
-            onTap: () {
-              widget.onFacilitySelected?.call(facility);
-            },
-            child: _FacilityPin(
-              facility: facility,
-              isSelected: isSelected,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return pinWidgets;
-  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// USER LOCATION GPS PIN WITH PULSING RADAR
-// ─────────────────────────────────────────────────────────────────────────────
-class _UserLocationPin extends StatelessWidget {
-  final Animation<double> pulseAnimation;
-  final bool isEmergency;
-
-  const _UserLocationPin({
-    required this.pulseAnimation,
-    this.isEmergency = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isEmergency ? Colors.redAccent : AppTheme.primary;
-
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Radar pulse outer ring
-          AnimatedBuilder(
-            animation: pulseAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: pulseAnimation.value,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color.withOpacity(0.22),
-                    border: Border.all(
-                      color: color.withOpacity(0.45),
-                      width: 1.2,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          // User core dot
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              border: Border.all(color: Colors.white, width: 2.5),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.6),
-                  blurRadius: 10,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FACILITY MARKER PIN
-// ─────────────────────────────────────────────────────────────────────────────
-class _FacilityPin extends StatelessWidget {
+/// Facility Marker on real map with icon, emergency indicator, and tap handler
+class _FacilityRealMapMarker extends StatelessWidget {
   final MedicalFacility facility;
   final bool isSelected;
+  final VoidCallback onTap;
 
-  const _FacilityPin({
+  const _FacilityRealMapMarker({
     required this.facility,
     required this.isSelected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final pinColor = facility.isEmergency
-        ? const Color(0xFFD32F2F)
-        : facility.type.color;
+    final isEmerg = facility.isEmergency;
+    final pinColor = isEmerg ? const Color(0xFFE53935) : facility.type.color;
 
-    return AnimatedScale(
-      scale: isSelected ? 1.25 : 1.0,
-      duration: const Duration(milliseconds: 200),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.white : pinColor,
-              shape: BoxShape.circle,
-              border: Border.all(
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedScale(
+        scale: isSelected ? 1.15 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
                 color: isSelected ? pinColor : Colors.white,
-                width: 2.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (isSelected ? pinColor : Colors.black).withOpacity(0.35),
-                  blurRadius: isSelected ? 12 : 6,
-                  offset: const Offset(0, 3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? Colors.white : pinColor,
+                  width: isSelected ? 2.0 : 1.2,
                 ),
-              ],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    facility.type.icon,
+                    size: 11,
+                    color: isSelected ? Colors.white : pinColor,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    isEmerg ? '24/7 ER' : facility.type.shortName,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : const Color(0xFF2D312E),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Icon(
-              facility.type.icon,
-              size: 14,
-              color: isSelected ? pinColor : Colors.white,
+            CustomPaint(
+              size: const Size(8, 5),
+              painter: _TrianglePainter(
+                color: isSelected ? pinColor : Colors.white,
+              ),
             ),
-          ),
-          // Pin pointer tip
-          CustomPaint(
-            size: const Size(8, 5),
-            painter: _PinTipPainter(color: isSelected ? Colors.white : pinColor),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _PinTipPainter extends CustomPainter {
-  final Color color;
-  _PinTipPainter({required this.color});
+/// User GPS Marker beacon
+class _CurrentUserGpsMarker extends StatelessWidget {
+  final Animation<double> pulseAnimation;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width, 0)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PinTipPainter old) => old.color != color;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SELECTED FACILITY QUICK CARD ON MAP
-// ─────────────────────────────────────────────────────────────────────────────
-class _SelectedFacilityQuickCard extends StatelessWidget {
-  final MedicalFacility facility;
-
-  const _SelectedFacilityQuickCard({required this.facility});
+  const _CurrentUserGpsMarker({required this.pulseAnimation});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedBuilder(
+      animation: pulseAnimation,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 38 * pulseAnimation.value,
+              height: 38 * pulseAnimation.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF2196F3).withValues(alpha: (0.4 / pulseAnimation.value).clamp(0.0, 0.4)),
+              ),
+            ),
+            Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1976D2),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Search Center Radar Pin
+class _SearchCenterRadarPin extends StatelessWidget {
+  final Animation<double> pulseAnimation;
+
+  const _SearchCenterRadarPin({required this.pulseAnimation});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pulseAnimation,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 34 * pulseAnimation.value,
+              height: 34 * pulseAnimation.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primary.withValues(alpha: (0.3 / pulseAnimation.value).clamp(0.0, 0.3)),
+              ),
+            ),
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: AppTheme.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2.5),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Quick preview card for selected medical facility on map
+class _FacilityQuickPreviewCard extends StatelessWidget {
+  final MedicalFacility facility;
+  final bool isDark;
+  final VoidCallback onClose;
+  final VoidCallback onDirections;
+
+  const _FacilityQuickPreviewCard({
+    required this.facility,
+    required this.isDark,
+    required this.onClose,
+    required this.onDirections,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onBg = isDark ? Colors.white : const Color(0xFF1C1B1F);
+    final onVar = isDark ? const Color(0xFFCAC4D0) : const Color(0xFF49454F);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: (isDark ? const Color(0xFF1E2422) : Colors.white).withOpacity(0.96),
-        borderRadius: BorderRadius.circular(16),
+        color: (isDark ? const Color(0xFF1E2624) : Colors.white).withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: facility.isEmergency
-              ? Colors.redAccent.withOpacity(0.5)
-              : AppTheme.primary.withOpacity(0.3),
+              ? const Color(0xFFE53935).withValues(alpha: 0.5)
+              : (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08)),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.4 : 0.12),
-            blurRadius: 14,
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
         children: [
+          // Icon badge
           Container(
-            padding: const EdgeInsets.all(7),
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: (facility.isEmergency ? Colors.redAccent : AppTheme.primary)
-                  .withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
+              color: (facility.isEmergency ? const Color(0xFFE53935) : facility.type.color)
+                  .withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               facility.type.icon,
-              color: facility.isEmergency ? Colors.redAccent : AppTheme.primary,
-              size: 16,
+              color: facility.isEmergency ? const Color(0xFFE53935) : facility.type.color,
+              size: 24,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
+
+          // Details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,9 +592,9 @@ class _SelectedFacilityQuickCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: isDark ? Colors.white : Colors.black87,
+                    color: onBg,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -541,38 +602,71 @@ class _SelectedFacilityQuickCard extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        '${facility.distance} • ${facility.estimatedTravelTime}',
+                        '${facility.distance} (~${facility.estimatedTravelTime})',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 10.5,
-                          color: AppTheme.primary,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w700,
+                          color: AppTheme.primary,
                         ),
                       ),
                     ),
-                    if (facility.isEmergency) ...[
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: const Text(
-                          '24/7 ER',
-                          style: TextStyle(
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.redAccent,
-                          ),
-                        ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '•  ${facility.operatingHours}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: onVar),
                       ),
-                    ],
+                    ),
                   ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  facility.address,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, color: onVar),
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+
+          // Action buttons
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: onClose,
+                child: Padding(
+                  padding: const EdgeInsets.all(2.0),
+                  child: Icon(Icons.close_rounded, size: 16, color: onVar),
+                ),
+              ),
+              const SizedBox(height: 4),
+              ElevatedButton(
+                onPressed: onDirections,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: facility.isEmergency ? const Color(0xFFE53935) : AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.directions_rounded, size: 13),
+                    SizedBox(width: 3),
+                    Text('Go', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -580,147 +674,74 @@ class _SelectedFacilityQuickCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAP CONTROL BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
-class _MapControlBtn extends StatelessWidget {
+class _MapIconButton extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onTap;
   final String tooltip;
-  final bool highlight;
+  final bool isDark;
+  final VoidCallback onTap;
 
-  const _MapControlBtn({
+  const _MapIconButton({
     required this.icon,
-    required this.onTap,
     required this.tooltip,
-    this.highlight = false,
+    required this.isDark,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: highlight
-              ? AppTheme.primary
-              : (isDark ? const Color(0xFF222826) : Colors.white).withOpacity(0.92),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: (isDark ? const Color(0xFF1E2624) : Colors.white).withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
             ),
-          ],
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: highlight
-              ? AppTheme.onPrimary
-              : (isDark ? Colors.white : Colors.black87),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: isDark ? Colors.white : const Color(0xFF2D312E),
+          ),
         ),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VECTOR MAP PAINTER (ROADS, GREENERY, RIVER, TOPOGRAPHY)
-// ─────────────────────────────────────────────────────────────────────────────
-class _VectorMapPainter extends CustomPainter {
-  final bool isDark;
-  final bool isEmergency;
+class _TrianglePainter extends CustomPainter {
+  final Color color;
 
-  _VectorMapPainter({required this.isDark, required this.isEmergency});
+  _TrianglePainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Background Grid & Terrain
-    final bgPaint = Paint()
-      ..color = isDark ? const Color(0xFF141918) : const Color(0xFFF0F4F1);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
-
-    // 2. Green Park Spaces
-    final parkPaint = Paint()
-      ..color = (isDark ? const Color(0xFF1C271E) : const Color(0xFFD8E8D5)).withOpacity(0.7)
+    final paint = Paint()
+      ..color = color
       ..style = PaintingStyle.fill;
 
-    final parkPath1 = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.08, size.height * 0.12, size.width * 0.28, size.height * 0.35),
-        const Radius.circular(18),
-      ));
-    canvas.drawPath(parkPath1, parkPaint);
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width, 0)
+      ..close();
 
-    final parkPath2 = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * 0.65, size.height * 0.52, size.width * 0.30, size.height * 0.38),
-        const Radius.circular(22),
-      ));
-    canvas.drawPath(parkPath2, parkPaint);
-
-    // 3. Water Body / Blue River Stream
-    final waterPaint = Paint()
-      ..color = isDark ? const Color(0xFF13222B) : const Color(0xFFCDE2ED)
-      ..strokeWidth = 14
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final riverPath = Path()
-      ..moveTo(0, size.height * 0.78)
-      ..cubicTo(
-        size.width * 0.3,
-        size.height * 0.85,
-        size.width * 0.6,
-        size.height * 0.68,
-        size.width,
-        size.height * 0.82,
-      );
-    canvas.drawPath(riverPath, waterPaint);
-
-    // 4. Secondary Roads Grid
-    final secRoadPaint = Paint()
-      ..color = isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.04)
-      ..strokeWidth = 4
-      ..style = PaintingStyle.stroke;
-
-    for (double x = 40; x < size.width; x += 60) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), secRoadPaint);
-    }
-    for (double y = 40; y < size.height; y += 50) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), secRoadPaint);
-    }
-
-    // 5. Main Highways / Primary Arterials
-    final mainRoadPaint = Paint()
-      ..color = isDark ? const Color(0xFF26332B) : const Color(0xFFFFFFFF)
-      ..strokeWidth = 7
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    // Diagonal Highway 1
-    final road1 = Path()
-      ..moveTo(0, size.height * 0.35)
-      ..cubicTo(size.width * 0.4, size.height * 0.38, size.width * 0.55, size.height * 0.55, size.width, size.height * 0.45);
-    canvas.drawPath(road1, mainRoadPaint);
-
-    // Main Avenue 2
-    final road2 = Path()
-      ..moveTo(size.width * 0.48, 0)
-      ..lineTo(size.width * 0.48, size.height);
-    canvas.drawPath(road2, mainRoadPaint);
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _VectorMapPainter old) =>
-      old.isDark != isDark || old.isEmergency != isEmergency;
+  bool shouldRepaint(covariant _TrianglePainter oldDelegate) =>
+      color != oldDelegate.color;
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/food_place_model.dart';
+import '../services/hotel_location_service.dart';
 import '../theme/app_theme.dart';
 
 /// Navigation action info for food locations.
@@ -22,11 +24,21 @@ class FoodNavigationInfo {
 
 /// Abstracted navigation service for Food & Dining locations.
 class FoodNavigationService {
-  /// Generate navigation intent info for a food spot.
-  static FoodNavigationInfo getNavigationInfo(FoodPlace place) {
-    final encodedAddr = Uri.encodeComponent('${place.name}, ${place.address}');
+  /// Generate navigation intent info for a food spot with live device GPS as origin.
+  static Future<FoodNavigationInfo> getNavigationInfo(FoodPlace place, {double? userLat, double? userLng}) async {
+    double originLat;
+    double originLon;
+    if (userLat != null && userLng != null) {
+      originLat = userLat;
+      originLon = userLng;
+    } else {
+      final gps = await HotelLocationService.getCurrentLocation();
+      originLat = gps.latitude;
+      originLon = gps.longitude;
+    }
+
     final mapsUrl =
-        'https://www.google.com/maps/dir/?api=1&destination=${place.latitude},${place.longitude}&query=$encodedAddr';
+        'https://www.google.com/maps/dir/?api=1&origin=$originLat,$originLon&destination=${place.latitude},${place.longitude}&travelmode=driving';
 
     return FoodNavigationInfo(
       title: place.name,
@@ -37,8 +49,52 @@ class FoodNavigationService {
     );
   }
 
+  /// Launch external Google Maps turn-by-turn driving navigation from current device GPS to food destination.
+  static Future<void> launchGoogleMapsDirections(BuildContext context, FoodPlace place, {double? userLat, double? userLng}) async {
+    try {
+      double originLat;
+      double originLon;
+      if (userLat != null && userLng != null) {
+        originLat = userLat;
+        originLon = userLng;
+      } else {
+        final gps = await HotelLocationService.getCurrentLocation();
+        originLat = gps.latitude;
+        originLon = gps.longitude;
+      }
+
+      final urlStr =
+          'https://www.google.com/maps/dir/?api=1&origin=$originLat,$originLon&destination=${place.latitude},${place.longitude}&travelmode=driving';
+      final uri = Uri.parse(urlStr);
+
+      debugPrint('\n========== FOOD DIRECTIONS DEBUG ==========');
+      debugPrint('Current GPS: $originLat, $originLon');
+      debugPrint('Food Place: ${place.name}');
+      debugPrint('Destination: ${place.latitude}, ${place.longitude}');
+      debugPrint('Generated Google Maps URL: $urlStr');
+      debugPrint('============================================\n');
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('[Directions] Error launching Google Maps: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to launch Google Maps: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   /// Displays an interactive navigation modal with GPS copy and directions trigger.
-  static void showNavigationModal(BuildContext context, FoodPlace place) {
+  static void showNavigationModal(BuildContext context, FoodPlace place, {double? userLat, double? userLng}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
     final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
@@ -233,17 +289,7 @@ class FoodNavigationService {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Starting directions to ${place.name} (${place.distance})...',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          backgroundColor: AppTheme.primary,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      );
+                      launchGoogleMapsDirections(context, place, userLat: userLat, userLng: userLng);
                     },
                     icon: const Icon(Icons.navigation_rounded, size: 17),
                     label: const Text(

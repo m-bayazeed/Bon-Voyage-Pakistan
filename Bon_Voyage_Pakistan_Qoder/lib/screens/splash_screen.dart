@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/travel_alert_service.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'onboarding_screen.dart';
+
 
 /// Splash screen displayed when the app opens.
 ///
@@ -57,8 +59,11 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _mainController.forward();
+    // Refresh live notifications in background on app startup
+    TravelAlertService.refreshAlertsInBackground();
     _checkAuthAndNavigate();
   }
+
 
   @override
   void dispose() {

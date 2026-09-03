@@ -24,7 +24,7 @@ extension HotelCategoryExtension on HotelCategory {
       case HotelCategory.budget:
         return 'Guest House / Budget';
       case HotelCategory.glamping:
-        return 'Glamping & Campsite';
+        return 'Campsite / Glamping';
     }
   }
 
@@ -67,7 +67,6 @@ extension HotelCategoryExtension on HotelCategory {
 enum HotelSortOption {
   nearness,
   rating,
-  reviews,
   priceLowToHigh,
   priceHighToLow,
 }
@@ -76,15 +75,26 @@ extension HotelSortOptionExtension on HotelSortOption {
   String get displayName {
     switch (this) {
       case HotelSortOption.nearness:
-        return 'Nearest to Me';
+        return 'Nearest';
       case HotelSortOption.rating:
-        return 'Top Rated';
-      case HotelSortOption.reviews:
-        return 'Most Popular (Reviews)';
+        return 'Highest Rated';
       case HotelSortOption.priceLowToHigh:
         return 'Price: Low to High';
       case HotelSortOption.priceHighToLow:
         return 'Price: High to Low';
+    }
+  }
+
+  String get apiKey {
+    switch (this) {
+      case HotelSortOption.nearness:
+        return 'nearest';
+      case HotelSortOption.rating:
+        return 'rating';
+      case HotelSortOption.priceLowToHigh:
+        return 'price_low_high';
+      case HotelSortOption.priceHighToLow:
+        return 'price_high_low';
     }
   }
 
@@ -94,8 +104,6 @@ extension HotelSortOptionExtension on HotelSortOption {
         return Icons.near_me_rounded;
       case HotelSortOption.rating:
         return Icons.star_rate_rounded;
-      case HotelSortOption.reviews:
-        return Icons.rate_review_rounded;
       case HotelSortOption.priceLowToHigh:
         return Icons.arrow_upward_rounded;
       case HotelSortOption.priceHighToLow:
@@ -180,12 +188,13 @@ extension HotelAmenityExtension on HotelAmenity {
   }
 }
 
-/// Comprehensive Hotel model supporting rich UI, map markers, distance calculations,
-/// and future Maps/Places/Backend API ingestion.
+/// Comprehensive Hotel model supporting Geoapify data, Gemini enrichment,
+/// Haversine distance, and interactive map markers.
 class Hotel {
   final String id;
   final String name;
   final HotelCategory category;
+  final String badgeLabel;
   final double latitude;
   final double longitude;
   final String city;
@@ -193,23 +202,27 @@ class Hotel {
   final String distance;
   final double distanceKm;
   final String estimatedTravelTime;
-  final double rating;
-  final int reviewCount;
-  final int pricePerNightPkr;
-  final String imageUrl;
+  final double? rating;
+  final int? reviewCount;
+  final int? pricePerNightPkr;
+  final String? imageUrl;
   final List<String> galleryImages;
   final bool isAvailable;
-  final String phone;
+  final String? phone;
   final String? website;
+  final List<String> customAmenities;
   final List<HotelAmenity> amenities;
   final String description;
+  final String? highlight;
   final String? popularReviewSnippet;
   final String landmarkNearby;
+  final String directionsUrl;
 
   const Hotel({
     required this.id,
     required this.name,
     required this.category,
+    this.badgeLabel = 'Hotel & Stay',
     required this.latitude,
     required this.longitude,
     required this.city,
@@ -217,27 +230,33 @@ class Hotel {
     required this.distance,
     required this.distanceKm,
     required this.estimatedTravelTime,
-    required this.rating,
-    required this.reviewCount,
-    required this.pricePerNightPkr,
-    required this.imageUrl,
+    this.rating,
+    this.reviewCount,
+    this.pricePerNightPkr,
+    this.imageUrl,
     this.galleryImages = const [],
     this.isAvailable = true,
-    required this.phone,
+    this.phone,
     this.website,
-    required this.amenities,
+    this.customAmenities = const [],
+    this.amenities = const [],
     required this.description,
+    this.highlight,
     this.popularReviewSnippet,
-    required this.landmarkNearby,
+    this.landmarkNearby = '',
+    required this.directionsUrl,
   });
 
-  /// Formatted price string in PKR currency (e.g. "PKR 25,000 / night").
-  String get formattedPrice {
+  /// Formatted price string in PKR currency if available.
+  String? get formattedPrice {
+    if (pricePerNightPkr == null || pricePerNightPkr! <= 0) {
+      return null;
+    }
     final priceStr = pricePerNightPkr.toString().replaceAllMapped(
           RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
           (Match m) => '${m[1]},',
         );
-    return 'PKR $priceStr';
+    return 'PKR $priceStr / night';
   }
 
   /// Create a copy of hotel with updated distance based on active user coordinates.
@@ -250,6 +269,7 @@ class Hotel {
       id: id,
       name: name,
       category: category,
+      badgeLabel: badgeLabel,
       latitude: latitude,
       longitude: longitude,
       city: city,
@@ -265,41 +285,101 @@ class Hotel {
       isAvailable: isAvailable,
       phone: phone,
       website: website,
+      customAmenities: customAmenities,
       amenities: amenities,
       description: description,
+      highlight: highlight,
       popularReviewSnippet: popularReviewSnippet,
       landmarkNearby: landmarkNearby,
+      directionsUrl: directionsUrl,
     );
   }
 
-  /// Create model instance from standard JSON dictionary (for future backend API).
+  /// Create model instance from standard JSON dictionary (supporting snake_case & camelCase).
   factory Hotel.fromJson(Map<String, dynamic> json) {
+    final lat = (json['latitude'] as num?)?.toDouble() ?? 33.6844;
+    final lon = (json['longitude'] as num?)?.toDouble() ?? 73.0479;
+    final roadDistKm = (json['road_distance_km'] as num?)?.toDouble() ??
+        (json['roadDistanceKm'] as num?)?.toDouble();
+    final drivingDurationMin = (json['driving_duration_min'] as num?)?.toInt() ??
+        (json['drivingDurationMin'] as num?)?.toInt();
+    final formattedDist = json['formatted_distance'] as String? ??
+        json['formattedDistance'] as String?;
+
+    final distKmNum = roadDistKm ??
+        (json['distance_km'] as num?)?.toDouble() ??
+        (json['distanceKm'] as num?)?.toDouble();
+
+    final double distKm = distKmNum ?? 0.0;
+
+    final String distStr;
+    if (formattedDist != null && formattedDist.isNotEmpty) {
+      distStr = formattedDist;
+    } else if (distKmNum != null && distKmNum > 0) {
+      distStr = distKmNum < 1.0
+          ? '${(distKmNum * 1000).round()} m away'
+          : '${distKmNum.toStringAsFixed(1)} km away';
+    } else {
+      distStr = 'Distance unavailable';
+    }
+
+    final String travelTimeStr;
+    if (drivingDurationMin != null) {
+      travelTimeStr = '~$drivingDurationMin min';
+    } else if (json['estimatedTravelTime'] is String &&
+        (json['estimatedTravelTime'] as String).isNotEmpty) {
+      travelTimeStr = json['estimatedTravelTime'] as String;
+    } else {
+      travelTimeStr = 'ETA unavailable';
+    }
+
+    final rawCat = json['category'] as String?;
+    final parsedCat = _parseCategory(rawCat);
+
+    final rawAmenities = json['amenities'] as List<dynamic>?;
+    final parsedEnumAmenities = _parseAmenities(rawAmenities);
+    final stringAmenities =
+        rawAmenities?.map((e) => e.toString()).toList() ?? <String>[];
+
+    final directions = json['directions_url'] as String? ??
+        json['directionsUrl'] as String? ??
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lon';
+
     return Hotel(
       id: json['id'] as String? ?? 'HTL-${DateTime.now().millisecondsSinceEpoch}',
-      name: json['name'] as String? ?? 'Unnamed Hotel',
-      category: _parseCategory(json['category'] as String?),
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 33.6844,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 73.0479,
-      city: json['city'] as String? ?? 'Islamabad',
+      name: json['name'] as String? ?? 'Stay in Pakistan',
+      category: parsedCat,
+      badgeLabel: json['badge_label'] as String? ??
+          json['badgeLabel'] as String? ??
+          parsedCat.displayName,
+      latitude: lat,
+      longitude: lon,
+      city: json['city'] as String? ?? 'Pakistan',
       address: json['address'] as String? ?? '',
-      distance: json['distance'] as String? ?? 'Nearby',
-      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 1.0,
-      estimatedTravelTime: json['estimatedTravelTime'] as String? ?? '5 mins',
-      rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
-      reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 100,
-      pricePerNightPkr: (json['pricePerNightPkr'] as num?)?.toInt() ?? 15000,
-      imageUrl: json['imageUrl'] as String? ?? '',
+      distance: distStr,
+      distanceKm: distKm,
+      estimatedTravelTime: travelTimeStr,
+      rating: (json['rating'] as num?)?.toDouble(),
+      reviewCount: (json['reviews_count'] as num?)?.toInt() ??
+          (json['reviewCount'] as num?)?.toInt(),
+      pricePerNightPkr: (json['price_per_night_pkr'] as num?)?.toInt() ??
+          (json['pricePerNightPkr'] as num?)?.toInt(),
+      imageUrl: json['image_url'] as String? ?? json['imageUrl'] as String?,
       galleryImages: (json['galleryImages'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           const [],
       isAvailable: json['isAvailable'] as bool? ?? true,
-      phone: json['phone'] as String? ?? '+92-51-111-111-111',
+      phone: json['phone'] as String?,
       website: json['website'] as String?,
-      amenities: _parseAmenities(json['amenities'] as List<dynamic>?),
-      description: json['description'] as String? ?? '',
+      customAmenities: stringAmenities,
+      amenities: parsedEnumAmenities,
+      description: json['description'] as String? ??
+          'Accommodation located in ${json['city'] ?? 'Pakistan'}.',
+      highlight: json['highlight'] as String?,
       popularReviewSnippet: json['popularReviewSnippet'] as String?,
       landmarkNearby: json['landmarkNearby'] as String? ?? '',
+      directionsUrl: directions,
     );
   }
 
@@ -308,50 +388,77 @@ class Hotel {
       'id': id,
       'name': name,
       'category': category.name,
+      'badge_label': badgeLabel,
       'latitude': latitude,
       'longitude': longitude,
       'city': city,
       'address': address,
       'distance': distance,
-      'distanceKm': distanceKm,
+      'distance_km': distanceKm,
       'estimatedTravelTime': estimatedTravelTime,
       'rating': rating,
-      'reviewCount': reviewCount,
-      'pricePerNightPkr': pricePerNightPkr,
-      'imageUrl': imageUrl,
+      'reviews_count': reviewCount,
+      'price_per_night_pkr': pricePerNightPkr,
+      'image_url': imageUrl,
       'galleryImages': galleryImages,
       'isAvailable': isAvailable,
       'phone': phone,
       'website': website,
-      'amenities': amenities.map((a) => a.name).toList(),
+      'amenities': customAmenities,
       'description': description,
+      'highlight': highlight,
       'popularReviewSnippet': popularReviewSnippet,
       'landmarkNearby': landmarkNearby,
+      'directions_url': directionsUrl,
     };
   }
 
   static HotelCategory _parseCategory(String? raw) {
-    if (raw == null) return HotelCategory.luxury;
-    return HotelCategory.values.firstWhere(
-      (c) => c.name.toLowerCase() == raw.toLowerCase(),
-      orElse: () => HotelCategory.luxury,
-    );
+    if (raw == null) return HotelCategory.all;
+    final r = raw.toLowerCase().trim();
+    if (r.contains('luxury')) return HotelCategory.luxury;
+    if (r.contains('resort')) return HotelCategory.resort;
+    if (r.contains('boutique')) return HotelCategory.boutique;
+    if (r.contains('budget') || r.contains('guesthouse') || r.contains('guest_house') || r.contains('hostel')) {
+      return HotelCategory.budget;
+    }
+    if (r.contains('glamping') || r.contains('camp') || r.contains('campsite')) {
+      return HotelCategory.glamping;
+    }
+    return HotelCategory.all;
   }
 
   static List<HotelAmenity> _parseAmenities(List<dynamic>? rawList) {
-    if (rawList == null) return [HotelAmenity.freeWifi, HotelAmenity.mountainView];
+    if (rawList == null) return [];
     final result = <HotelAmenity>[];
     for (final item in rawList) {
       final str = item.toString().toLowerCase();
-      for (final a in HotelAmenity.values) {
-        if (a.name.toLowerCase() == str) {
-          result.add(a);
-          break;
-        }
+      if (str.contains('wifi') || str.contains('wi-fi')) {
+        result.add(HotelAmenity.freeWifi);
+      } else if (str.contains('view') || str.contains('mountain')) {
+        result.add(HotelAmenity.mountainView);
+      } else if (str.contains('pool')) {
+        result.add(HotelAmenity.swimmingPool);
+      } else if (str.contains('spa')) {
+        result.add(HotelAmenity.spaWellness);
+      } else if (str.contains('restaurant') || str.contains('dining')) {
+        result.add(HotelAmenity.restaurant);
+      } else if (str.contains('breakfast')) {
+        result.add(HotelAmenity.freeBreakfast);
+      } else if (str.contains('shuttle') || str.contains('airport')) {
+        result.add(HotelAmenity.airportShuttle);
+      } else if (str.contains('parking')) {
+        result.add(HotelAmenity.freeParking);
+      } else if (str.contains('heating') || str.contains('ac') || str.contains('air')) {
+        result.add(HotelAmenity.heatingAc);
+      } else if (str.contains('bonfire') || str.contains('fire')) {
+        result.add(HotelAmenity.bonfireArea);
+      } else if (str.contains('tour') || str.contains('jeep')) {
+        result.add(HotelAmenity.tourDesk);
+      } else if (str.contains('room service')) {
+        result.add(HotelAmenity.roomService);
       }
     }
-    return result.isEmpty
-        ? [HotelAmenity.freeWifi, HotelAmenity.mountainView]
-        : result;
+    return result.toSet().toList();
   }
 }

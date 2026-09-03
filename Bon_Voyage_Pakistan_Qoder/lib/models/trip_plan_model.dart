@@ -10,6 +10,9 @@ class ChatMessage {
   final DateTime timestamp;
   final TripPlan? planSnippet;
   final List<String>? quickSuggestions;
+  final String? checklistActionTitle;
+  final int? checklistActionDayNumber;
+  final bool isChecklistActionAdded;
 
   ChatMessage({
     required this.id,
@@ -18,7 +21,34 @@ class ChatMessage {
     DateTime? timestamp,
     this.planSnippet,
     this.quickSuggestions,
+    this.checklistActionTitle,
+    this.checklistActionDayNumber,
+    this.isChecklistActionAdded = false,
   }) : timestamp = timestamp ?? DateTime.now();
+
+  ChatMessage copyWith({
+    String? id,
+    String? text,
+    bool? isAi,
+    DateTime? timestamp,
+    TripPlan? planSnippet,
+    List<String>? quickSuggestions,
+    String? checklistActionTitle,
+    int? checklistActionDayNumber,
+    bool? isChecklistActionAdded,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      text: text ?? this.text,
+      isAi: isAi ?? this.isAi,
+      timestamp: timestamp ?? this.timestamp,
+      planSnippet: planSnippet ?? this.planSnippet,
+      quickSuggestions: quickSuggestions ?? this.quickSuggestions,
+      checklistActionTitle: checklistActionTitle ?? this.checklistActionTitle,
+      checklistActionDayNumber: checklistActionDayNumber ?? this.checklistActionDayNumber,
+      isChecklistActionAdded: isChecklistActionAdded ?? this.isChecklistActionAdded,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -27,6 +57,9 @@ class ChatMessage {
         'timestamp': timestamp.toIso8601String(),
         'planSnippet': planSnippet?.toJson(),
         'quickSuggestions': quickSuggestions,
+        'checklistActionTitle': checklistActionTitle,
+        'checklistActionDayNumber': checklistActionDayNumber,
+        'isChecklistActionAdded': isChecklistActionAdded,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -40,8 +73,12 @@ class ChatMessage {
         quickSuggestions: json['quickSuggestions'] != null
             ? List<String>.from(json['quickSuggestions'] as List)
             : null,
+        checklistActionTitle: json['checklistActionTitle'] as String?,
+        checklistActionDayNumber: json['checklistActionDayNumber'] as int?,
+        isChecklistActionAdded: json['isChecklistActionAdded'] as bool? ?? false,
       );
 }
+
 
 /// Detailed day-by-day itinerary item.
 class ItineraryDay {

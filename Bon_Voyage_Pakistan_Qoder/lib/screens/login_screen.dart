@@ -143,21 +143,25 @@ class _LoginScreenState extends State<LoginScreen>
                           width: 110,
                           height: 110,
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
+                            borderRadius: BorderRadius.circular(22),
                             color: surface,
-                            border: Border.all(color: AppTheme.primary.withOpacity(0.3), width: 1.5),
+                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3), width: 1.5),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.primary.withOpacity(0.12),
+                                color: AppTheme.primary.withValues(alpha: 0.12),
                                 blurRadius: 24,
                                 spreadRadius: 2,
                               ),
                             ],
                           ),
-                          child: ClipOval(
-                            child: Image.asset(
-                              'assets/images/logo.png',
-                              fit: BoxFit.cover,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                fit: BoxFit.contain,
+                              ),
                             ),
                           ),
                         ),
@@ -192,15 +196,15 @@ class _LoginScreenState extends State<LoginScreen>
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: isDark ? surface.withOpacity(0.6) : surface,
+                          color: isDark ? surface.withValues(alpha: 0.6) : surface,
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
-                            color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
                             width: 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(isDark ? 0.25 : 0.06),
+                              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
                               blurRadius: 30,
                               offset: const Offset(0, 10),
                             ),
@@ -289,52 +293,6 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                       const SizedBox(height: 28),
-                      // Divider
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: onVariant.withOpacity(0.2), thickness: 1)),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: Text(
-                              'OR CONTINUE WITH',
-                              style: TextStyle(
-                                color: onVariant.withOpacity(0.7),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: onVariant.withOpacity(0.2), thickness: 1)),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      // Google button
-                      SizedBox(
-                        height: 54,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Google sign-in coming soon!'),
-                                duration: Duration(seconds: 2),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
-                          label: const Text(
-                            'Google',
-                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: onBg,
-                            backgroundColor: isDark ? surface.withOpacity(0.5) : surface,
-                            side: BorderSide(color: onVariant.withOpacity(0.15)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          ),
-                        ),
-                      ),
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,

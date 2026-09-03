@@ -1,6 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../models/trip_checklist_item_model.dart';
+import '../models/trip_plan_model.dart';
 import '../services/auth_service.dart';
+import '../services/trip_checklist_service.dart';
+import '../services/trip_history_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/theme_toggle.dart';
@@ -13,6 +18,7 @@ import 'scan_search_screen.dart';
 import 'settings_screen.dart';
 import 'translator_screen.dart';
 import 'travel_alerts_screen.dart';
+import 'trip_checklist_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,11 +45,38 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
+  // Scroll Controller for scroll-driven logo animation
+  final ScrollController _scrollController = ScrollController();
+  double _scrollOffset = 0.0;
+
+  // Plan & Checklist state
+  TripPlan? _latestFinalizedPlan;
+  int _pendingChecklistCount = 0;
+  StreamSubscription<List<TripChecklistItem>>? _checklistSubscription;
+
   @override
   void initState() {
     super.initState();
 
     _loadUserName();
+    _loadDashboardData();
+
+    _scrollController.addListener(() {
+      final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+      if ((offset - _scrollOffset).abs() > 0.5) {
+        setState(() {
+          _scrollOffset = offset;
+        });
+      }
+    });
+
+    _checklistSubscription = TripChecklistService.checklistStream.listen((items) {
+      if (mounted) {
+        setState(() {
+          _pendingChecklistCount = items.where((i) => !i.isCompleted).length;
+        });
+      }
+    });
 
     _animationController = AnimationController(
       vsync: this,
@@ -70,9 +103,25 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _scrollController.dispose();
+    _checklistSubscription?.cancel();
     _animationController.dispose();
     super.dispose();
   }
+
+  Future<void> _loadDashboardData() async {
+    try {
+      final plan = await TripHistoryService.getLatestFinalizedPlan();
+      final items = await TripChecklistService.getActiveChecklist();
+      if (mounted) {
+        setState(() {
+          _latestFinalizedPlan = plan;
+          _pendingChecklistCount = items.where((i) => !i.isCompleted).length;
+        });
+      }
+    } catch (_) {}
+  }
+
 
   // =========================================================
   // LOAD USER NAME
@@ -450,6 +499,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: SlideTransition(
                 position: _slideAnimation,
                 child: CustomScrollView(
+                  controller: _scrollController,
                   physics: const BouncingScrollPhysics(),
                   slivers: [
                     // =================================================
@@ -461,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen>
                         20,
                         12,
                         20,
-                        10,
+                        4,
                       ),
                       sliver: SliverToBoxAdapter(
                         child: Row(
@@ -559,13 +609,46 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
 
                     // =================================================
+                    // SCROLL-DRIVEN ANIMATED APP LOGO
+                    // =================================================
+
+                    SliverPadding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 0),
+                      sliver: SliverToBoxAdapter(
+                        child: Builder(
+                          builder: (context) {
+                            final logoProgress = (_scrollOffset / 120.0).clamp(0.0, 1.0);
+                            final logoScale = 1.0 - (logoProgress * 0.42); // Shrinks smoothly
+                            final logoRotation = -0.12 * logoProgress; // Smooth subtle rotation
+                            final logoTranslateY = -8.0 * logoProgress; // Moves upward towards header
+
+                            return Center(
+                              child: Transform(
+                                alignment: Alignment.center,
+                                transform: Matrix4.identity()
+                                  ..translate(0.0, logoTranslateY)
+                                  ..scale(logoScale)
+                                  ..rotateZ(logoRotation),
+                                child: Image.asset(
+                                  'assets/images/logo.png',
+                                  height: 68,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+
+                    // =================================================
                     // WELCOME TEXT
                     // =================================================
 
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(
                         24,
-                        28,
+                        16,
                         24,
                         0,
                       ),
@@ -578,20 +661,20 @@ class _HomeScreenState extends State<HomeScreen>
                               'Pakistan is waiting\nfor you, $_userName.',
                               style: TextStyle(
                                 color: colorScheme.onSurface,
-                                fontSize: 30,
+                                fontSize: 28,
                                 height: 1.15,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.8,
                               ),
                             ),
 
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
 
                             Text(
                               'Plan smarter. Explore deeper. Travel better.',
                               style: TextStyle(
                                 color: colorScheme.onSurfaceVariant,
-                                fontSize: 15,
+                                fontSize: 14.5,
                               ),
                             ),
                           ],
@@ -600,294 +683,113 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
 
                     // =================================================
-                    // SEARCH BAR
+                    // 2×2 QUICK ACTION DASHBOARD GRID
                     // =================================================
 
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(
-                        24,
-                        28,
-                        24,
-                        34,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                       sliver: SliverToBoxAdapter(
-                        child: Container(
-                          height: 58,
-                          decoration: BoxDecoration(
-                            color:
-                                colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color:
-                                  AppTheme.primary.withOpacity(0.14),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    AppTheme.primary.withOpacity(0.06),
-                                blurRadius: 24,
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 18),
-
-                              Icon(
-                                Icons.search_rounded,
-                                color: AppTheme.primary,
-                              ),
-
-                              const SizedBox(width: 12),
-
-                              Expanded(
-                                child: TextField(
-                                  style: TextStyle(
-                                    color: colorScheme.onSurface,
-                                  ),
-                                  decoration: InputDecoration(
-                                    border: InputBorder.none,
-                                    hintText:
-                                        'Search destinations...',
-                                    hintStyle: TextStyle(
-                                      color: colorScheme.onSurfaceVariant
-                                          .withOpacity(0.65),
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  onSubmitted: (value) {
-                                    if (value.trim().isNotEmpty) {
-                                      _showComingSoon(
-                                        'Search for "${value.trim()}"',
+                        child: Column(
+                          children: [
+                            // ROW 1: AI Planning & Emergency Aid
+                            Row(
+                              children: [
+                                // CARD 1: AI PLANNING
+                                Expanded(
+                                  child: _buildActionCard(
+                                    title: 'AI Planning',
+                                    subtitle: 'Custom Tour Route',
+                                    icon: Icons.auto_awesome_rounded,
+                                    accentColor: AppTheme.primary,
+                                    isDark: isDark,
+                                    colorScheme: colorScheme,
+                                    onTap: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const AiTourPlanningScreen(),
+                                        ),
                                       );
-                                    }
-                                  },
-                                ),
-                              ),
-
-                              Container(
-                                margin: const EdgeInsets.all(6),
-                                width: 46,
-                                height: 46,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: IconButton(
-                                  onPressed: () {
-                                    _showComingSoon(
-                                      'Advanced Search',
-                                    );
-                                  },
-                                  icon: Icon(
-                                    Icons.tune_rounded,
-                                    color: AppTheme.onPrimary,
-                                    size: 20,
+                                      _loadDashboardData();
+                                    },
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                                const SizedBox(width: 12),
 
-                    // =================================================
-                    // AI TRIP PLANNER CARD
-                    // =================================================
-
-                    SliverPadding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 24),
-                      sliver: SliverToBoxAdapter(
-                        child: GestureDetector(
-                          onTap: () {
-                            _handleBottomNavigation(0);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(22),
-                            decoration: BoxDecoration(
-                              borderRadius:
-                                  BorderRadius.circular(26),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  AppTheme.primary.withOpacity(
-                                    isDark ? 0.18 : 0.12,
-                                  ),
-                                  colorScheme
-                                      .surfaceContainerHighest,
-                                ],
-                              ),
-                              border: Border.all(
-                                color:
-                                    AppTheme.primary.withOpacity(0.22),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      AppTheme.primary.withOpacity(0.07),
-                                  blurRadius: 30,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 58,
-                                  height: 58,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppTheme.primary
-                                        .withOpacity(0.16),
-                                  ),
-                                  child: Icon(
-                                    Icons.auto_awesome_rounded,
-                                    color: AppTheme.primary,
-                                    size: 28,
-                                  ),
-                                ),
-
-                                const SizedBox(width: 16),
-
+                                // CARD 2: EMERGENCY & MEDICAL AID
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Plan with AI',
-                                        style: TextStyle(
-                                          color:
-                                              colorScheme.onSurface,
-                                          fontSize: 18,
-                                          fontWeight:
-                                              FontWeight.w800,
+                                  child: _buildActionCard(
+                                    title: 'Emergency Aid',
+                                    subtitle: 'Hospitals & 1122',
+                                    icon: Icons.health_and_safety_rounded,
+                                    accentColor: Colors.redAccent,
+                                    badgeText: '24/7',
+                                    isDark: isDark,
+                                    colorScheme: colorScheme,
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const FirstAidHospitalsScreen(),
                                         ),
-                                      ),
-
-                                      const SizedBox(height: 6),
-
-                                      Text(
-                                        'Tell us your budget, dates and cities. We will help build your perfect Pakistan trip.',
-                                        style: TextStyle(
-                                          color: colorScheme
-                                              .onSurfaceVariant,
-                                          fontSize: 12.5,
-                                          height: 1.45,
-                                        ),
-                                      ),
-                                    ],
+                                      );
+                                    },
                                   ),
-                                ),
-
-                                Icon(
-                                  Icons.arrow_forward_rounded,
-                                  color: AppTheme.primary,
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                      ),
-                    ),
+                            const SizedBox(height: 12),
 
-                    // =================================================
-                    // SAFETY & EMERGENCY MEDICAL CARD
-                    // =================================================
-
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: GestureDetector(
-                          onTap: () {
-                            _handleBottomNavigation(6);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(22),
-                              color: colorScheme.surfaceContainerHighest,
-                              border: Border.all(
-                                color: Colors.redAccent.withOpacity(0.25),
-                              ),
-                            ),
-                            child: Row(
+                            // ROW 2: Latest Finalized Plan & Trip Checklist & Notes
+                            Row(
                               children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.redAccent.withOpacity(0.14),
-                                  ),
-                                  child: const Icon(
-                                    Icons.health_and_safety_rounded,
-                                    color: Colors.redAccent,
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
+                                // CARD 3: LATEST FINALIZED TRIP PLAN
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              'Emergency & Medical Aid',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: colorScheme.onSurface,
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.redAccent,
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: const Text(
-                                              '24/7',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Hospitals, First Aid, Pharmacies & 1122 Helplines',
-                                        style: TextStyle(
-                                          color: colorScheme.onSurfaceVariant,
-                                          fontSize: 11.5,
+                                  child: _buildPlanCard(
+                                    plan: _latestFinalizedPlan,
+                                    isDark: isDark,
+                                    colorScheme: colorScheme,
+                                    onTap: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => _latestFinalizedPlan != null
+                                              ? AiTourPlanningScreen(initialPlan: _latestFinalizedPlan)
+                                              : const AiTourPlanningScreen(),
                                         ),
-                                      ),
-                                    ],
+                                      );
+                                      _loadDashboardData();
+                                    },
                                   ),
                                 ),
-                                const Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  color: Colors.redAccent,
-                                  size: 14,
+                                const SizedBox(width: 12),
+
+                                // CARD 4: TRIP CHECKLIST & NOTES
+                                Expanded(
+                                  child: _buildChecklistCard(
+                                    pendingCount: _pendingChecklistCount,
+                                    hasPlan: _latestFinalizedPlan != null,
+                                    planDays: _latestFinalizedPlan?.days,
+                                    isDark: isDark,
+                                    colorScheme: colorScheme,
+                                    onTap: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const TripChecklistScreen(),
+                                        ),
+                                      );
+                                      _loadDashboardData();
+                                    },
+                                  ),
                                 ),
                               ],
                             ),
-                          ),
+                          ],
                         ),
                       ),
                     ),
+
 
                     // =================================================
                     // FEATURED HEADER
@@ -1171,6 +1073,343 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
+
+  // =========================================================
+  // 2×2 DASHBOARD CARD BUILDERS
+  // =========================================================
+
+  Widget _buildActionCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accentColor,
+    String? badgeText,
+    required bool isDark,
+    required ColorScheme colorScheme,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          border: Border.all(
+            color: accentColor.withOpacity(isDark ? 0.25 : 0.2),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withOpacity(0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accentColor.withOpacity(0.15),
+                  ),
+                  child: Icon(icon, color: accentColor, size: 20),
+                ),
+                if (badgeText != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: accentColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badgeText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    color: accentColor.withOpacity(0.7),
+                    size: 16,
+                  ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlanCard({
+    required TripPlan? plan,
+    required bool isDark,
+    required ColorScheme colorScheme,
+    required VoidCallback onTap,
+  }) {
+    final hasPlan = plan != null;
+    final accentColor = const Color(0xFF0288D1);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          border: Border.all(
+            color: accentColor.withOpacity(isDark ? 0.28 : 0.2),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withOpacity(0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accentColor.withOpacity(0.15),
+                  ),
+                  child: Icon(
+                    hasPlan ? Icons.map_rounded : Icons.add_location_alt_outlined,
+                    color: accentColor,
+                    size: 20,
+                  ),
+                ),
+                if (hasPlan)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: accentColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      '${plan.days}D Plan',
+                      style: TextStyle(
+                        color: accentColor,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'No Plan',
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasPlan ? plan.title : 'No trip plan yet',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasPlan
+                      ? '📍 ${plan.destinationCity}'
+                      : 'Plan your trip first ➔',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: hasPlan ? colorScheme.onSurfaceVariant : AppTheme.primary,
+                    fontSize: 11,
+                    fontWeight: hasPlan ? FontWeight.w500 : FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChecklistCard({
+    required int pendingCount,
+    required bool hasPlan,
+    int? planDays,
+    required bool isDark,
+    required ColorScheme colorScheme,
+    required VoidCallback onTap,
+  }) {
+    final accentColor = const Color(0xFF5A7328);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 120,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          border: Border.all(
+            color: accentColor.withOpacity(isDark ? 0.28 : 0.2),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withOpacity(0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accentColor.withOpacity(0.15),
+                  ),
+                  child: Icon(
+                    Icons.checklist_rounded,
+                    color: accentColor,
+                    size: 21,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: pendingCount > 0
+                        ? accentColor.withOpacity(0.15)
+                        : (hasPlan ? Colors.green.withOpacity(0.15) : Colors.grey.withOpacity(0.15)),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: pendingCount > 0
+                          ? accentColor.withOpacity(0.3)
+                          : (hasPlan ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3)),
+                    ),
+                  ),
+                  child: Text(
+                    pendingCount > 0
+                        ? '$pendingCount Left'
+                        : (hasPlan ? 'All Done' : 'Setup'),
+                    style: TextStyle(
+                      color: pendingCount > 0
+                          ? accentColor
+                          : (hasPlan ? Colors.green : colorScheme.onSurfaceVariant),
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Trip Checklist',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasPlan
+                      ? (planDays != null ? 'By $planDays itinerary days' : 'Plan-aware organizer')
+                      : 'Create plan to activate',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 }
 
 // =========================================================

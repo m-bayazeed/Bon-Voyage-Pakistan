@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import '../config/api_config.dart';
 import '../models/hotel_model.dart';
 import '../services/hotel_location_service.dart';
 import '../services/hotel_navigation_service.dart';
 import '../services/hotel_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
+
+
 import '../widgets/hotel_card.dart';
 import '../widgets/interactive_hotel_map.dart';
 import '../widgets/theme_toggle.dart';
 
 /// Premier Hotels & Stays Discovery Screen for Bon Voyage Pakistan.
+/// Features Real Interactive OpenStreetMap tiles, live Geoapify markers,
+/// separate Device GPS vs Search Location state, Geoapify Route Matrix road distance & ETA,
+/// and external Google Maps turn-by-turn navigation.
 class HotelsScreen extends StatefulWidget {
   final String? initialCity;
   final HotelCategory? initialCategory;
@@ -26,7 +32,12 @@ class HotelsScreen extends StatefulWidget {
 
 class _HotelsScreenState extends State<HotelsScreen>
     with SingleTickerProviderStateMixin {
-  String _selectedCity = 'Islamabad';
+  // ── SEPARATE LOCATION CONCEPTS ──
+  GeoPoint? _deviceGpsLocation; // Actual device GPS
+  String _selectedLocationName = 'Current Location (GPS)';
+  double? _selectedLatitude; // Search center latitude
+  double? _selectedLongitude; // Search center longitude
+
   HotelCategory _selectedCategory = HotelCategory.all;
   HotelSortOption _selectedSort = HotelSortOption.nearness;
 
@@ -35,12 +46,9 @@ class _HotelsScreenState extends State<HotelsScreen>
 
   List<Hotel> _hotels = [];
   Hotel? _selectedHotel;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _hasSearched = false;
   String? _errorMessage;
-
-  // Active user GPS coordinates
-  double? _userLat;
-  double? _userLng;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -49,8 +57,8 @@ class _HotelsScreenState extends State<HotelsScreen>
   @override
   void initState() {
     super.initState();
-    if (widget.initialCity != null) {
-      _selectedCity = widget.initialCity!;
+    if (widget.initialCity != null && widget.initialCity!.isNotEmpty) {
+      _selectedLocationName = widget.initialCity!;
     }
     if (widget.initialCategory != null) {
       _selectedCategory = widget.initialCategory!;
@@ -58,7 +66,7 @@ class _HotelsScreenState extends State<HotelsScreen>
 
     _animCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(
@@ -67,7 +75,7 @@ class _HotelsScreenState extends State<HotelsScreen>
     ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
 
     _animCtrl.forward();
-    _loadHotels();
+    _initializeLocation();
   }
 
   @override
@@ -77,31 +85,67 @@ class _HotelsScreenState extends State<HotelsScreen>
     super.dispose();
   }
 
+  Future<void> _initializeLocation() async {
+    // Acquire current device GPS and resolve initial search center without auto-loading
+    try {
+      _deviceGpsLocation = await HotelLocationService.getCurrentLocation();
+
+      final isGps = _selectedLocationName.contains('Current Location') || _selectedLocationName.contains('GPS');
+      if (isGps && _deviceGpsLocation != null) {
+        _selectedLatitude = _deviceGpsLocation!.latitude;
+        _selectedLongitude = _deviceGpsLocation!.longitude;
+        _selectedLocationName = 'Current Location (${_selectedLatitude!.toStringAsFixed(3)}, ${_selectedLongitude!.toStringAsFixed(3)})';
+      } else {
+        final point = await HotelLocationService.resolveDestination(_selectedLocationName);
+        _selectedLatitude = point.latitude;
+        _selectedLongitude = point.longitude;
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
   Future<void> _loadHotels() async {
     setState(() {
+      _hasSearched = true;
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      // If GPS mode selected, acquire device coordinates
-      if (_selectedCity.contains('Current Location')) {
-        final loc = await HotelLocationService.getCurrentLocation();
-        _userLat = loc.latitude;
-        _userLng = loc.longitude;
+      final isGps = _selectedLocationName.contains('Current Location') || _selectedLocationName.contains('GPS');
+      final double? radius = isGps ? 20.0 : null;
+
+      // Always refresh latest device GPS for routing
+      _deviceGpsLocation = await HotelLocationService.getCurrentLocation();
+
+      // Resolve search center coordinates
+      if (isGps && _deviceGpsLocation != null) {
+        _selectedLatitude = _deviceGpsLocation!.latitude;
+        _selectedLongitude = _deviceGpsLocation!.longitude;
+        _selectedLocationName = 'Current Location (${_selectedLatitude!.toStringAsFixed(3)}, ${_selectedLongitude!.toStringAsFixed(3)})';
       } else {
-        final cityCenter = HotelLocationService.getCityCenter(_selectedCity);
-        _userLat = cityCenter.latitude;
-        _userLng = cityCenter.longitude;
+        final point = await HotelLocationService.resolveDestination(_selectedLocationName);
+        _selectedLatitude = point.latitude;
+        _selectedLongitude = point.longitude;
       }
 
+      debugPrint('\n==================== CLIENT HOTEL SEARCH ====================');
+      debugPrint('Selected Search Location: $_selectedLocationName');
+      debugPrint('Search Center: ($_selectedLatitude, $_selectedLongitude)');
+      debugPrint('Actual Device GPS: (${_deviceGpsLocation?.latitude}, ${_deviceGpsLocation?.longitude})');
+      debugPrint('=============================================================\n');
+
+      // Fetch nearby stays from backend (Geoapify Places + Route Matrix + Gemini)
       final results = await HotelService.getHotels(
-        city: _selectedCity,
+        city: _selectedLocationName,
         category: _selectedCategory,
         sortBy: _selectedSort,
         searchQuery: _searchQuery,
-        userLat: _userLat,
-        userLng: _userLng,
+        userLat: _selectedLatitude,
+        userLng: _selectedLongitude,
+        deviceGpsLat: _deviceGpsLocation?.latitude,
+        deviceGpsLng: _deviceGpsLocation?.longitude,
+        radiusKm: radius,
       );
 
       if (!mounted) return;
@@ -111,149 +155,238 @@ class _HotelsScreenState extends State<HotelsScreen>
         _selectedHotel = results.isNotEmpty ? results.first : null;
         _isLoading = false;
       });
+
+      debugPrint('[HotelsScreen] Loaded ${_hotels.length} stays. Center: ($_selectedLatitude, $_selectedLongitude)');
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = 'Failed to load hotels: $e';
+        _errorMessage = 'Failed to load stays: $e';
         _isLoading = false;
       });
     }
   }
 
-  void _onCityChanged(String newCity) {
+  void _onCitySelected(String newLocation) async {
+    final isGps = newLocation.contains('Current Location') || newLocation.contains('GPS');
+
+    if (isGps) {
+      final gps = await HotelLocationService.getCurrentLocation();
+      _deviceGpsLocation = gps;
+      final lat = gps.latitude;
+      final lon = gps.longitude;
+
+      setState(() {
+        _selectedLocationName = 'Current Location (${lat.toStringAsFixed(3)}, ${lon.toStringAsFixed(3)})';
+        _selectedLatitude = lat;
+        _selectedLongitude = lon;
+      });
+
+      debugPrint('[HotelsScreen] GPS Location chosen: (${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)})');
+      return;
+    }
+
+    final point = await HotelLocationService.resolveDestination(newLocation);
     setState(() {
-      _selectedCity = newCity;
+      _selectedLocationName = newLocation;
+      _selectedLatitude = point.latitude;
+      _selectedLongitude = point.longitude;
     });
-    _loadHotels();
+
+    debugPrint('[HotelsScreen] City chosen: "$newLocation" -> Center: (${point.latitude}, ${point.longitude})');
   }
 
   void _onCategoryChanged(HotelCategory category) {
     setState(() {
       _selectedCategory = category;
     });
-    _loadHotels();
   }
 
   void _onSortChanged(HotelSortOption sort) {
     setState(() {
       _selectedSort = sort;
     });
-    _loadHotels();
   }
 
   void _onSearchChanged(String query) {
     setState(() {
       _searchQuery = query;
     });
-    _loadHotels();
   }
 
-  void _showCityDialog() {
-    final cities = HotelService.getAvailableCities();
+  void _showLocationDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
+    final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
+
+    final cities = await HotelService.getAvailableCities();
+    if (!mounted) return;
+
+    final customLocationCtrl = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Row(
-          children: [
-            const Icon(Icons.location_city_rounded, color: AppTheme.primary),
-            const SizedBox(width: 10),
-            Text(
-              'Select Destination',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: cities.length,
-            itemBuilder: (_, i) {
-              final c = cities[i];
-              final isSelected = c == _selectedCity;
-              final isGps = c.contains('Current Location');
-
-              return ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                tileColor: isSelected
-                    ? (isGps ? Colors.green.withOpacity(0.18) : AppTheme.primary.withOpacity(0.15))
-                    : (isGps ? Colors.green.withOpacity(0.08) : Colors.transparent),
-                leading: Icon(
-                  isGps
-                      ? Icons.my_location_rounded
-                      : (c == 'All Locations' ? Icons.public_rounded : Icons.place_rounded),
-                  color: isSelected
-                      ? (isGps ? Colors.green : AppTheme.primary)
-                      : (isGps ? Colors.green : (isDark ? Colors.white60 : Colors.black45)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            title: Row(
+              children: [
+                const Icon(Icons.location_city_rounded, color: AppTheme.primary),
+                const SizedBox(width: 10),
+                Text(
+                  'Choose Destination',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: onBg,
+                  ),
                 ),
-                title: Row(
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        c,
-                        style: TextStyle(
-                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                          color: isSelected
-                              ? (isGps ? Colors.green : AppTheme.primary)
-                              : (isGps ? (isDark ? Colors.greenAccent : Colors.green[800]) : (isDark ? Colors.white : Colors.black87)),
+                    // Custom Location Search Input
+                    Container(
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? AppTheme.darkSurfaceVariant.withOpacity(0.5)
+                            : AppTheme.lightSurfaceVariant.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.08)
+                              : Colors.black.withOpacity(0.08),
                         ),
+                      ),
+                      child: TextField(
+                        controller: customLocationCtrl,
+                        style: TextStyle(fontSize: 13, color: onBg),
+                        decoration: InputDecoration(
+                          hintText: 'Search city, valley, or landmark...',
+                          hintStyle: TextStyle(fontSize: 12.5, color: onVar),
+                          prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppTheme.primary),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.arrow_forward_rounded, size: 18, color: AppTheme.primary),
+                            onPressed: () {
+                              final text = customLocationCtrl.text.trim();
+                              if (text.isNotEmpty) {
+                                Navigator.pop(ctx);
+                                _onCitySelected(text);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Selected "$text". Tap "Search Stays" to find stays.'),
+                                    backgroundColor: AppTheme.primary,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        onSubmitted: (text) {
+                          if (text.trim().isNotEmpty) {
+                            Navigator.pop(ctx);
+                            _onCitySelected(text.trim());
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Selected "${text.trim()}". Tap "Search Stays" to find stays.'),
+                                backgroundColor: AppTheme.primary,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
                       ),
                     ),
-                    if (isGps)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'LIVE GPS',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.green,
-                          ),
-                        ),
+                    const SizedBox(height: 14),
+
+                    Text(
+                      'POPULAR DESTINATIONS',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: onVar,
+                        letterSpacing: 0.6,
                       ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // City List
+                    ...cities.map((c) {
+                      final isSelected = c == _selectedLocationName;
+                      final isGps = c.contains('Current Location');
+
+                      return ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        tileColor: isSelected
+                            ? (isGps ? Colors.green.withOpacity(0.18) : AppTheme.primary.withOpacity(0.15))
+                            : (isGps ? Colors.green.withOpacity(0.08) : Colors.transparent),
+                        leading: Icon(
+                          isGps
+                              ? Icons.my_location_rounded
+                              : (c == 'All Locations' ? Icons.public_rounded : Icons.place_rounded),
+                          color: isSelected
+                              ? (isGps ? Colors.green : AppTheme.primary)
+                              : (isGps ? Colors.green : (isDark ? Colors.white60 : Colors.black45)),
+                          size: 18,
+                        ),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                c,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                  color: isSelected
+                                      ? (isGps ? Colors.green : AppTheme.primary)
+                                      : (isGps ? (isDark ? Colors.greenAccent : Colors.green[800]) : onBg),
+                                ),
+                              ),
+                            ),
+                            if (isGps)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'GPS',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        trailing: isSelected
+                            ? Icon(Icons.check_circle_rounded, color: isGps ? Colors.green : AppTheme.primary, size: 18)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _onCitySelected(c);
+                        },
+                      );
+                    }),
                   ],
                 ),
-                subtitle: isGps
-                    ? Text(
-                        'Find hotels closest to your device coordinates',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: isDark ? Colors.white54 : Colors.black54,
-                        ),
-                      )
-                    : null,
-                trailing: isSelected
-                    ? Icon(Icons.check_circle_rounded, color: isGps ? Colors.green : AppTheme.primary)
-                    : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _onCityChanged(c);
-                  if (isGps) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Acquiring GPS coordinates... Searching nearest stays.'),
-                        backgroundColor: AppTheme.primary,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                },
-              );
-            },
-          ),
-        ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -262,6 +395,10 @@ class _HotelsScreenState extends State<HotelsScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
     final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
+
+    final hasImage = hotel.imageUrl != null && hotel.imageUrl!.trim().isNotEmpty;
+    final hasRating = hotel.rating != null && hotel.rating! > 0;
+    final hasPrice = hotel.formattedPrice != null;
 
     showModalBottomSheet(
       context: context,
@@ -300,20 +437,59 @@ class _HotelsScreenState extends State<HotelsScreen>
                   controller: scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
                   children: [
-                    // Hero Image with Category Badge
+                    // Hero Image / Stylized Header
                     ClipRRect(
                       borderRadius: BorderRadius.circular(20),
                       child: SizedBox(
-                        height: 220,
+                        height: 200,
                         width: double.infinity,
-                        child: Image.network(
-                          hotel.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: isDark ? AppTheme.darkSurfaceVariant : AppTheme.lightSurfaceVariant,
-                            child: Icon(hotel.category.icon, size: 60, color: AppTheme.primary),
-                          ),
-                        ),
+                        child: hasImage
+                            ? Image.network(
+                                hotel.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: isDark
+                                      ? AppTheme.darkSurfaceVariant
+                                      : AppTheme.lightSurfaceVariant,
+                                  child: Icon(hotel.category.icon, size: 60, color: AppTheme.primary),
+                                ),
+                              )
+                            : Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: isDark
+                                        ? [
+                                            const Color(0xFF1E2824),
+                                            hotel.category.color.withOpacity(0.3),
+                                            const Color(0xFF121715),
+                                          ]
+                                        : [
+                                            const Color(0xFFE2EBE5),
+                                            hotel.category.color.withOpacity(0.2),
+                                            const Color(0xFFD3E0D8),
+                                          ],
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(hotel.category.icon, size: 56, color: hotel.category.color),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        hotel.badgeLabel,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          color: onBg,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -324,71 +500,112 @@ class _HotelsScreenState extends State<HotelsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Text(
-                            hotel.name,
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: onBg,
-                              letterSpacing: -0.4,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                hotel.name,
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: onBg,
+                                  letterSpacing: -0.4,
+                                ),
+                              ),
+                              if (hotel.highlight != null && hotel.highlight!.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.auto_awesome_rounded, color: AppTheme.primary, size: 14),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      hotel.highlight!,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            hotel.formattedPrice,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
+                        if (hasPrice) ...[
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Text(
+                              hotel.formattedPrice!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
 
-                    // Rating & Distance Row
+                    // Rating, Category Badge & Distance Row
                     Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.18),
+                            color: hotel.category.color.withOpacity(0.18),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${hotel.rating}',
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
-                              ),
-                            ],
+                          child: Text(
+                            hotel.badgeLabel,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: hotel.category.color,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '(${hotel.reviewCount} verified reviews)',
-                          style: TextStyle(fontSize: 12.5, color: onVar),
-                        ),
+                        if (hasRating) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.star_rounded, color: Colors.amber, size: 15),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${hotel.rating!.toStringAsFixed(1)}',
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 8),
                         const Text('•', style: TextStyle(color: Colors.grey)),
                         const SizedBox(width: 8),
-                        Text(
-                          hotel.distance,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primary,
+                        Expanded(
+                          child: Text(
+                            hotel.distance,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primary,
+                            ),
                           ),
                         ),
                       ],
@@ -396,40 +613,30 @@ class _HotelsScreenState extends State<HotelsScreen>
                     const SizedBox(height: 18),
 
                     // Address Card
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? AppTheme.darkSurfaceVariant.withOpacity(0.4)
-                            : AppTheme.lightSurfaceVariant.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.location_on_rounded, color: AppTheme.primary, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  hotel.address,
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: onBg),
-                                ),
-                                if (hotel.landmarkNearby.isNotEmpty) ...[
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    'Near: ${hotel.landmarkNearby}',
-                                    style: TextStyle(fontSize: 11.5, color: onVar),
-                                  ),
-                                ],
-                              ],
+                    if (hotel.address.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? AppTheme.darkSurfaceVariant.withOpacity(0.4)
+                              : AppTheme.lightSurfaceVariant.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_on_rounded, color: AppTheme.primary, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                hotel.address,
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: onBg),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 20),
+                    ],
 
                     // Description
                     Text(
@@ -443,100 +650,90 @@ class _HotelsScreenState extends State<HotelsScreen>
                     ),
                     const SizedBox(height: 20),
 
-                    // Popular review highlight
-                    if (hotel.popularReviewSnippet != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.format_quote_rounded, color: AppTheme.primary, size: 22),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '"${hotel.popularReviewSnippet}"',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: onBg,
-                                  fontStyle: FontStyle.italic,
-                                  height: 1.35,
+                    // Amenities Section
+                    if (hotel.amenities.isNotEmpty || hotel.customAmenities.isNotEmpty) ...[
+                      Text(
+                        'Amenities & Features',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: onBg),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ...hotel.amenities.map((a) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? AppTheme.darkSurfaceVariant.withOpacity(0.6)
+                                    : AppTheme.lightSurfaceVariant,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
-                    // Amenities Section
-                    Text(
-                      'Amenities & Features',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: onBg),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: hotel.amenities.map((a) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? AppTheme.darkSurfaceVariant.withOpacity(0.6)
-                                : AppTheme.lightSurfaceVariant,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(a.icon, size: 15, color: AppTheme.primary),
-                              const SizedBox(width: 6),
-                              Text(
-                                a.displayName,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(a.icon, size: 15, color: AppTheme.primary),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    a.displayName,
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: onBg),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          ...hotel.customAmenities.map((label) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? AppTheme.darkSurfaceVariant.withOpacity(0.6)
+                                    : AppTheme.lightSurfaceVariant,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                label,
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: onBg),
                               ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 24),
+                            );
+                          }),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                    ],
 
                     // Action Buttons (Call / Directions)
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _showCallDialog(hotel);
-                            },
-                            icon: const Icon(Icons.call, size: 17),
-                            label: const Text('Call Desk', style: TextStyle(fontWeight: FontWeight.w700)),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppTheme.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              side: BorderSide(color: AppTheme.primary.withOpacity(0.4)),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        if (hotel.phone != null && hotel.phone!.isNotEmpty) ...[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _showCallDialog(hotel);
+                              },
+                              icon: const Icon(Icons.call, size: 17),
+                              label: const Text('Call Desk', style: TextStyle(fontWeight: FontWeight.w700)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                side: BorderSide(color: AppTheme.primary.withOpacity(0.4)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
+                          const SizedBox(width: 12),
+                        ],
                         Expanded(
                           flex: 2,
                           child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(ctx);
-                              HotelNavigationService.showNavigationModal(context, hotel);
+                              HotelNavigationService.launchGoogleMapsDirections(context, hotel);
                             },
                             icon: const Icon(Icons.directions_rounded, size: 18),
                             label: const Text('Get Directions', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
@@ -551,6 +748,8 @@ class _HotelsScreenState extends State<HotelsScreen>
                         ),
                       ],
                     ),
+
+
                   ],
                 ),
               ),
@@ -569,15 +768,15 @@ class _HotelsScreenState extends State<HotelsScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.phone_in_talk_rounded, color: AppTheme.primary),
-            const SizedBox(width: 10),
-            Text('Contact Concierge', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87)),
+            Icon(Icons.phone_in_talk_rounded, color: AppTheme.primary),
+            SizedBox(width: 10),
+            Text('Contact Stay', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           ],
         ),
         content: Text(
-          'Connect with ${hotel.name} front desk at:\n\n${hotel.phone}',
+          'Connect with ${hotel.name} front desk at:\n\n${hotel.phone ?? "Phone unavailable"}',
           style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.black87),
         ),
         actions: [
@@ -630,7 +829,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── 1. Header with Back Button, Region Selector & ThemeToggle ──
+                    // ── 1. Header with Region Selector & ThemeToggle ──
                     _buildHeader(),
 
                     const SizedBox(height: 16),
@@ -638,18 +837,27 @@ class _HotelsScreenState extends State<HotelsScreen>
                     // ── 2. Search & Category Filter ──
                     _buildSearchAndFilters(),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
 
                     // ── 3. Sorting Selector ──
                     _buildSortSelector(),
 
+                    const SizedBox(height: 16),
+
+                    // ── 4. Prominent Manual "Search Stays" Button ──
+                    _buildSearchActionButton(),
+
                     const SizedBox(height: 20),
 
-                    // ── 4. Interactive Map Section ──
+                    // ── 5. Real Interactive Geographic Map (Geoapify OSM Tiles) ──
                     InteractiveHotelMap(
                       hotels: _hotels,
                       selectedHotel: _selectedHotel,
-                      height: 290,
+                      centerLat: _selectedLatitude,
+                      centerLng: _selectedLongitude,
+                      userLat: _deviceGpsLocation?.latitude,
+                      userLng: _deviceGpsLocation?.longitude,
+                      height: 300,
                       onHotelSelected: (hotel) {
                         setState(() => _selectedHotel = hotel);
                         _showHotelDetailsSheet(hotel);
@@ -657,7 +865,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                       onRecenter: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Map re-centered on $_selectedCity.'),
+                            content: Text('Map centered on $_selectedLocationName (${_selectedLatitude?.toStringAsFixed(3)}, ${_selectedLongitude?.toStringAsFixed(3)}).'),
                             backgroundColor: AppTheme.primary,
                             behavior: SnackBarBehavior.floating,
                             duration: const Duration(seconds: 2),
@@ -668,12 +876,12 @@ class _HotelsScreenState extends State<HotelsScreen>
 
                     const SizedBox(height: 24),
 
-                    // ── 5. Results List Header ──
+                    // ── 6. Results List Header ──
                     _buildListHeader(),
 
                     const SizedBox(height: 14),
 
-                    // ── 6. Results List / State Handlers ──
+                    // ── 7. Results List / State Handlers ──
                     _buildResultsContent(),
                   ],
                 ),
@@ -693,7 +901,7 @@ class _HotelsScreenState extends State<HotelsScreen>
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
     final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
     final tp = ThemeProviderScope.of(context);
-    final isGpsSelected = _selectedCity.contains('Current Location');
+    final isGpsSelected = _selectedLocationName.contains('Current Location');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -724,9 +932,9 @@ class _HotelsScreenState extends State<HotelsScreen>
               ),
             ),
 
-            // City / Region Selector Pill
+            // City / Location Selector Pill
             GestureDetector(
-              onTap: _showCityDialog,
+              onTap: _showLocationDialog,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -748,7 +956,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 140),
                       child: Text(
-                        _selectedCity,
+                        _selectedLocationName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -781,7 +989,7 @@ class _HotelsScreenState extends State<HotelsScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          '"Discover premier mountain resorts, boutique lodges & heritage palaces in Pakistan."',
+          '"Discover premier mountain resorts, boutique lodges & heritage stays in Pakistan."',
           style: TextStyle(
             color: onVar,
             fontSize: 13,
@@ -794,62 +1002,102 @@ class _HotelsScreenState extends State<HotelsScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 2. CATEGORY FILTER
+  // 2. CATEGORY FILTER & SEARCH
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildSearchAndFilters() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
+    final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _selectedCategory != HotelCategory.all
-              ? AppTheme.primary.withValues(alpha: 0.5)
-              : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06)),
-          width: _selectedCategory != HotelCategory.all ? 1.4 : 1.0,
+    return Column(
+      children: [
+        // Text Search Field
+        Container(
+          height: 46,
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06),
+            ),
+          ),
+          child: TextField(
+            controller: _searchCtrl,
+            style: TextStyle(fontSize: 13, color: onBg),
+            decoration: InputDecoration(
+              hintText: 'Search keyword for $_selectedLocationName...',
+              hintStyle: TextStyle(fontSize: 12.5, color: onVar),
+              prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppTheme.primary),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        _onSearchChanged('');
+                      },
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onChanged: _onSearchChanged,
+          ),
         ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<HotelCategory>(
-          value: _selectedCategory,
-          isExpanded: true,
-          dropdownColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-          borderRadius: BorderRadius.circular(16),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary),
-          items: HotelCategory.values.map((cat) {
-            return DropdownMenuItem<HotelCategory>(
-              value: cat,
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: cat.color.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(cat.icon, color: cat.color, size: 15),
+        const SizedBox(height: 12),
+
+        // Stay Category Filter Dropdown
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _selectedCategory != HotelCategory.all
+                  ? AppTheme.primary.withOpacity(0.5)
+                  : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
+              width: _selectedCategory != HotelCategory.all ? 1.4 : 1.0,
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<HotelCategory>(
+              value: _selectedCategory,
+              isExpanded: true,
+              dropdownColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+              borderRadius: BorderRadius.circular(16),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary),
+              items: HotelCategory.values.map((cat) {
+                return DropdownMenuItem<HotelCategory>(
+                  value: cat,
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: cat.color.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(cat.icon, color: cat.color, size: 15),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        cat.displayName,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: onBg,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    cat.displayName,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: onBg,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-          onChanged: (val) {
-            if (val != null) _onCategoryChanged(val);
-          },
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) _onCategoryChanged(val);
+              },
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -915,7 +1163,41 @@ class _HotelsScreenState extends State<HotelsScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 4. LIST HEADER
+  // 4. MANUAL SEARCH STAYS ACTION BUTTON
+  // ─────────────────────────────────────────────────────────────────────────────
+  Widget _buildSearchActionButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _loadHotels,
+        icon: _isLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              )
+            : const Icon(Icons.travel_explore_rounded, size: 20),
+        label: Text(
+          _isLoading ? 'Finding Stays...' : 'Search Stays in $_selectedLocationName',
+          style: const TextStyle(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primary,
+          foregroundColor: AppTheme.onPrimary,
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 5. LIST HEADER
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildListHeader() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -930,7 +1212,9 @@ class _HotelsScreenState extends State<HotelsScreen>
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: onBg),
         ),
         Text(
-          '${_hotels.length} ${_hotels.length == 1 ? 'stay' : 'stays'} found',
+          _hasSearched
+              ? '${_hotels.length} ${_hotels.length == 1 ? 'stay' : 'stays'} found'
+              : 'Select Category & Tap Search',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: onVar),
         ),
       ],
@@ -938,22 +1222,95 @@ class _HotelsScreenState extends State<HotelsScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 5. RESULTS LIST / STATE HANDLERS
+  // 6. RESULTS LIST / STATE HANDLERS
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildResultsContent() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    if (!_hasSearched && !_isLoading) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: AppTheme.primary.withOpacity(0.25),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.travel_explore_rounded, size: 38, color: AppTheme.primary),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Discover Stays in $_selectedLocationName',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Select your preferred accommodation category and sorting option above, then tap "Search Stays" to find verified properties with live road distance and route ETA.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.45,
+                color: isDark ? Colors.white70 : Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadHotels,
+              icon: const Icon(Icons.search_rounded, size: 18),
+              label: Text(
+                'Search Stays in $_selectedLocationName',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: AppTheme.onPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 2,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 40),
+          padding: const EdgeInsets.symmetric(vertical: 40),
           child: Column(
             children: [
-              CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2.5),
-              SizedBox(height: 12),
+              const CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2.5),
+              const SizedBox(height: 12),
               Text(
-                'Searching premier verified stays in Pakistan...',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.grey),
+                'Finding stays near $_selectedLocationName...',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
               ),
             ],
           ),
@@ -1013,12 +1370,12 @@ class _HotelsScreenState extends State<HotelsScreen>
             Icon(Icons.hotel_class_outlined, size: 44, color: isDark ? Colors.white38 : Colors.black38),
             const SizedBox(height: 12),
             Text(
-              'No Stays Matching Criteria',
+              'No stays found in this area.',
               style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87),
             ),
             const SizedBox(height: 6),
             Text(
-              'Try changing your destination city, resetting category filters, or clearing search keywords.',
+              'Try expanding category filters or searching another destination.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: isDark ? Colors.white60 : Colors.black54),
             ),
@@ -1037,7 +1394,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                 side: const BorderSide(color: AppTheme.primary),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Reset All Filters'),
+              child: const Text('Reset Category Filters'),
             ),
           ],
         ),
@@ -1057,7 +1414,7 @@ class _HotelsScreenState extends State<HotelsScreen>
             _showHotelDetailsSheet(hotel);
           },
           onDirections: () {
-            HotelNavigationService.showNavigationModal(context, hotel);
+            HotelNavigationService.launchGoogleMapsDirections(context, hotel);
           },
           onCall: () {
             _showCallDialog(hotel);

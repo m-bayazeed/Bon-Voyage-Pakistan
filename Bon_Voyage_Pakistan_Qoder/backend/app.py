@@ -448,6 +448,199 @@ def synthesize_route():
         return jsonify({"success": False, "error": detail}), status_code
 
 
+@app.route("/api/v1/hotels/cities", methods=["GET"])
+def hotels_cities_route():
+    """Flask endpoint for listing supported cities."""
+    import asyncio
+    from app.api.v1.hotels import get_cities
+
+    try:
+        result = asyncio.run(get_cities())
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Hotels cities error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v1/hotels/search", methods=["POST"])
+def hotels_search_route():
+    """Flask endpoint for hotel search with Geoapify and Gemini."""
+    import asyncio
+    from app.models.hotel import HotelSearchRequest
+    from app.api.v1.hotels import search_hotels
+
+    data = request.get_json() or {}
+    try:
+        req = HotelSearchRequest(**data)
+        result = asyncio.run(search_hotels(req))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Hotels search error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v1/hotels/geocode", methods=["POST"])
+def hotels_geocode_route():
+    """Flask endpoint for geocoding custom locations."""
+    import asyncio
+    from app.models.hotel import HotelGeocodeRequest
+    from app.api.v1.hotels import geocode_location
+
+    data = request.get_json() or {}
+    try:
+        req = HotelGeocodeRequest(**data)
+        result = asyncio.run(geocode_location(req))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Hotels geocode error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v1/hotels/resolve-location", methods=["POST"])
+def hotels_resolve_location_route():
+    """Flask endpoint for resolving destination coordinates using Gemini."""
+    import asyncio
+    from app.models.hotel import LocationResolutionRequest
+    from app.api.v1.hotels import resolve_location
+
+    data = request.get_json() or {}
+    try:
+        req = LocationResolutionRequest(**data)
+        result = asyncio.run(resolve_location(req))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Hotels resolve location error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v1/food/search", methods=["POST"])
+def food_search_route():
+    """Flask endpoint for live food & dining search via Google Places (New)."""
+    import asyncio
+    from app.models.food import FoodSearchRequest
+    from app.api.v1.food import search_food
+
+    data = request.get_json() or {}
+    try:
+        req = FoodSearchRequest(**data)
+        result = asyncio.run(search_food(req))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Food search error: {e}")
+        return jsonify({"success": False, "error": str(e), "places": []}), 500
+
+
+@app.route("/api/v1/help/search", methods=["POST"])
+def help_search_route():
+    """Flask endpoint for live medical & emergency facility search via Google Places (New)."""
+    import asyncio
+    from app.models.help import HelpSearchRequest
+    from app.api.v1.help import search_help
+
+    data = request.get_json() or {}
+    try:
+        req = HelpSearchRequest(**data)
+        result = asyncio.run(search_help(req))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Help search error: {e}")
+        return jsonify({"success": False, "error": str(e), "facilities": []}), 500
+
+
+@app.route("/api/v1/routes", methods=["POST"])
+def routes_compute_route():
+    """Flask endpoint for Google Routes matrix & driving ETA calculation."""
+    import asyncio
+    from app.api.v1.routes import compute_routes
+
+    data = request.get_json() or {}
+    try:
+        result = asyncio.run(compute_routes(data))
+        return jsonify(result), 200
+    except Exception as e:
+        app.logger.error(f"Routes error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/v1/landmarks/scan", methods=["POST"])
+def landmarks_scan_route():
+    """Flask endpoint for Gemini Multimodal Vision landmark identification."""
+    import asyncio
+    from app.services.landmark_service import landmark_service
+
+    if "image" not in request.files:
+        return jsonify({
+            "success": False,
+            "identified": False,
+            "error": "Please select or capture an image first.",
+        }), 400
+
+    file = request.files["image"]
+    if not file or not file.filename:
+        return jsonify({
+            "success": False,
+            "identified": False,
+            "error": "Please select or capture an image first.",
+        }), 400
+
+    lat_val = request.form.get("latitude")
+    lon_val = request.form.get("longitude")
+    latitude = float(lat_val) if lat_val else None
+    longitude = float(lon_val) if lon_val else None
+
+    try:
+        app.logger.info(f"[SCAN] Source: CAMERA/GALLERY via Flask (port 5000), Filename='{file.filename}'")
+        image_bytes = file.read()
+        result = asyncio.run(
+            landmark_service.identify_landmark(
+                image_bytes=image_bytes,
+                filename=file.filename,
+                content_type=file.content_type,
+                latitude=latitude,
+                longitude=longitude,
+            )
+        )
+        return jsonify(result.model_dump()), 200
+    except ValueError as val_err:
+        app.logger.warning(f"[SCAN] Landmark scan validation error: {val_err}")
+        return jsonify({
+            "success": False,
+            "identified": False,
+            "error": str(val_err),
+        }), 400
+    except Exception as e:
+        app.logger.error(f"[SCAN] Landmarks scan error: {e}")
+        return jsonify({
+            "success": False,
+            "identified": False,
+            "error": f"Landmark identification error: {str(e)}",
+        }), 500
+
+
+@app.route("/api/v1/landmarks/story-audio", methods=["POST"])
+@app.route("/api/v1/tts/story", methods=["POST"])
+def landmarks_story_audio_route():
+    """Flask endpoint for landmark story TTS synthesis."""
+    import asyncio
+    from app.services.landmark_service import landmark_service
+
+    data = request.get_json() or {}
+    text = data.get("text", "")
+    language = data.get("language", "en")
+
+    try:
+        result = asyncio.run(landmark_service.synthesize_story_audio(text=text, language=language))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"[TTS] Story audio error: {e}")
+        return jsonify({
+            "success": False,
+            "audio_base64": "",
+            "error": "TTS_GENERATION_FAILED",
+            "message": str(e),
+        }), 500
+
+
 # ──────────────────────────────────────────────
 # Entry Point
 # ──────────────────────────────────────────────
@@ -455,3 +648,4 @@ def synthesize_route():
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)
+

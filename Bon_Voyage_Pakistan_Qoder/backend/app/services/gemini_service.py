@@ -35,17 +35,9 @@ class GeminiService:
             temperature=0.1,
         )
 
-        candidate_models = [
-            settings.GEMINI_MODEL,
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-        ]
-        # Remove duplicates while preserving order
-        unique_models = []
-        for m in candidate_models:
-            if m and m not in unique_models:
-                unique_models.append(m)
+        candidate_models = settings.GEMINI_FALLBACK_MODELS
+        unique_models = [m for m in dict.fromkeys(candidate_models) if m]
+
 
         last_err = None
         for model_name in unique_models:

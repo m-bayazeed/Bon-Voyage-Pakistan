@@ -1,14 +1,18 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/hotel_model.dart';
 import '../theme/app_theme.dart';
 
-/// Interactive vector map widget displaying user location, hotel pins with prices,
-/// zoom/re-center controls, and a selected hotel preview quick card.
-/// Designed for easy drop-in replacement with Google Maps / Mapbox in the future.
+/// Real Interactive Vector Tile Map with Geoapify OSM Cartography,
+/// distinct User GPS beacon, exact Hotel markers, zoom controls, and quick card preview.
 class InteractiveHotelMap extends StatefulWidget {
   final List<Hotel> hotels;
   final Hotel? selectedHotel;
+  final double? centerLat;
+  final double? centerLng;
+  final double? userLat;
+  final double? userLng;
   final ValueChanged<Hotel>? onHotelSelected;
   final VoidCallback? onRecenter;
   final double height;
@@ -17,9 +21,13 @@ class InteractiveHotelMap extends StatefulWidget {
     super.key,
     required this.hotels,
     this.selectedHotel,
+    this.centerLat,
+    this.centerLng,
+    this.userLat,
+    this.userLng,
     this.onHotelSelected,
     this.onRecenter,
-    this.height = 290,
+    this.height = 300,
   });
 
   @override
@@ -28,53 +36,80 @@ class InteractiveHotelMap extends StatefulWidget {
 
 class _InteractiveHotelMapState extends State<InteractiveHotelMap>
     with SingleTickerProviderStateMixin {
-  double _zoomLevel = 1.0;
-  Offset _panOffset = Offset.zero;
+  late final MapController _mapController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  static const String _geoapifyApiKey = '454af56eb7eb4805ab7fc12bd150891a';
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.35).animate(
+    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.4).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
   @override
+  void didUpdateWidget(covariant InteractiveHotelMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // When center changes or search destination updates, smoothly recenter map
+    if (widget.centerLat != oldWidget.centerLat ||
+        widget.centerLng != oldWidget.centerLng) {
+      final lat = widget.centerLat ?? widget.userLat ?? 33.6844;
+      final lng = widget.centerLng ?? widget.userLng ?? 73.0479;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          _mapController.move(LatLng(lat, lng), 12.8);
+        } catch (_) {}
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _pulseController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
   void _zoomIn() {
-    setState(() {
-      _zoomLevel = min(_zoomLevel + 0.25, 2.5);
-    });
+    final center = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(center, (currentZoom + 1).clamp(4.0, 18.0));
   }
 
   void _zoomOut() {
-    setState(() {
-      _zoomLevel = max(_zoomLevel - 0.25, 0.75);
-    });
+    final center = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(center, (currentZoom - 1).clamp(4.0, 18.0));
   }
 
   void _recenter() {
-    setState(() {
-      _panOffset = Offset.zero;
-      _zoomLevel = 1.0;
-    });
+    final lat = widget.centerLat ?? widget.userLat ?? (widget.hotels.isNotEmpty ? widget.hotels.first.latitude : 33.6844);
+    final lng = widget.centerLng ?? widget.userLng ?? (widget.hotels.isNotEmpty ? widget.hotels.first.longitude : 73.0479);
+    _mapController.move(LatLng(lat, lng), 13.0);
     widget.onRecenter?.call();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final searchLat = widget.centerLat ?? widget.userLat ?? (widget.hotels.isNotEmpty ? widget.hotels.first.latitude : 33.6844);
+    final searchLng = widget.centerLng ?? widget.userLng ?? (widget.hotels.isNotEmpty ? widget.hotels.first.longitude : 73.0479);
+    final searchCenterPoint = LatLng(searchLat, searchLng);
+
+    final hasUserGps = widget.userLat != null && widget.userLng != null;
+    final userGpsPoint = hasUserGps ? LatLng(widget.userLat!, widget.userLng!) : null;
+    final isSearchSameAsGps = hasUserGps &&
+        (searchLat - widget.userLat!).abs() < 0.001 &&
+        (searchLng - widget.userLng!).abs() < 0.001;
 
     return Container(
       width: double.infinity,
@@ -100,72 +135,73 @@ class _InteractiveHotelMapState extends State<InteractiveHotelMap>
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // ── Interactive Map Canvas ──
-            GestureDetector(
-              onPanUpdate: (details) {
-                setState(() {
-                  _panOffset += details.delta;
-                });
-              },
-              child: Transform.translate(
-                offset: _panOffset,
-                child: Transform.scale(
-                  scale: _zoomLevel,
-                  child: CustomPaint(
-                    size: Size(double.infinity, widget.height),
-                    painter: _HotelVectorMapPainter(isDark: isDark),
-                  ),
+            // ── 1. Real Geoapify OSM-Bright Map Tiles ──
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: searchCenterPoint,
+                initialZoom: 12.5,
+                minZoom: 4.0,
+                maxZoom: 18.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                 ),
               ),
-            ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=$_geoapifyApiKey',
+                  fallbackUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.bonvoyage.pakistan',
+                  maxZoom: 19,
+                ),
 
-            // ── Hotel Markers Layer ──
-            Positioned.fill(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final center = Offset(
-                    constraints.maxWidth / 2 + _panOffset.dx,
-                    constraints.maxHeight / 2 + _panOffset.dy,
-                  );
-
-                  return Stack(
-                    children: [
-                      // User GPS Location Pin
-                      Positioned(
-                        left: center.dx - 20,
-                        top: center.dy - 20,
-                        child: _UserLocationPin(pulseAnimation: _pulseAnimation),
+                // ── 2. Real Geoapify Markers Layer ──
+                MarkerLayer(
+                  markers: [
+                    // Search Center Anchor (when distinct from user GPS)
+                    if (!isSearchSameAsGps)
+                      Marker(
+                        point: searchCenterPoint,
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        child: _SearchCenterRadarPin(pulseAnimation: _pulseAnimation),
                       ),
 
-                      // Nearby Hotels Pins
-                      ...widget.hotels.take(8).map((hotel) {
-                        final index = widget.hotels.indexOf(hotel);
-                        final markerOffset = _calculateMarkerOffset(
-                          index: index,
-                          total: min(widget.hotels.length, 8),
-                          center: center,
-                          zoom: _zoomLevel,
-                        );
+                    // Current Device Location GPS Pin
+                    if (userGpsPoint != null)
+                      Marker(
+                        point: userGpsPoint,
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        child: _CurrentUserGpsMarker(pulseAnimation: _pulseAnimation),
+                      ),
 
-                        final isSelected = widget.selectedHotel?.id == hotel.id;
-
-                        return Positioned(
-                          left: markerOffset.dx - 24,
-                          top: markerOffset.dy - 24,
-                          child: _HotelMapMarker(
-                            hotel: hotel,
-                            isSelected: isSelected,
-                            onTap: () => widget.onHotelSelected?.call(hotel),
-                          ),
-                        );
-                      }),
-                    ],
-                  );
-                },
-              ),
+                    // Hotel Accommodation Markers at Exact Coordinates
+                    ...widget.hotels.map((hotel) {
+                      final isSelected = widget.selectedHotel?.id == hotel.id;
+                      return Marker(
+                        point: LatLng(hotel.latitude, hotel.longitude),
+                        width: 72,
+                        height: 54,
+                        alignment: Alignment.center,
+                        child: _HotelRealMapMarker(
+                          hotel: hotel,
+                          isSelected: isSelected,
+                          onTap: () {
+                            _mapController.move(LatLng(hotel.latitude, hotel.longitude), 14.5);
+                            widget.onHotelSelected?.call(hotel);
+                          },
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ],
             ),
 
-            // ── Top Left Live Radar / Filter Badge ──
+            // ── 3. Top Left Live Stays Counter ──
             Positioned(
               top: 14,
               left: 14,
@@ -173,8 +209,7 @@ class _InteractiveHotelMapState extends State<InteractiveHotelMap>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: (isDark ? AppTheme.darkSurface : Colors.white)
-                      .withOpacity(0.92),
+                  color: (isDark ? AppTheme.darkSurface : Colors.white).withOpacity(0.92),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: AppTheme.primary.withOpacity(0.3),
@@ -216,7 +251,7 @@ class _InteractiveHotelMapState extends State<InteractiveHotelMap>
               ),
             ),
 
-            // ── Top Right Controls: Zoom & Recenter ──
+            // ── 4. Top Right Controls: Zoom & Recenter ──
             Positioned(
               top: 14,
               right: 14,
@@ -238,13 +273,38 @@ class _InteractiveHotelMapState extends State<InteractiveHotelMap>
                     icon: Icons.my_location_rounded,
                     onTap: _recenter,
                     isDark: isDark,
-                    highlight: true,
+                    tooltip: 'Recenter Map',
                   ),
                 ],
               ),
             ),
 
-            // ── Bottom Active Hotel Quick Preview Card ──
+            // ── 5. Bottom Right Attribution ──
+            Positioned(
+              bottom: widget.selectedHotel != null ? 78 : 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: (isDark ? Colors.black87 : Colors.white.withOpacity(0.85)),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isDark ? Colors.white10 : Colors.black12,
+                    width: 0.5,
+                  ),
+                ),
+                child: Text(
+                  'Powered by Geoapify | © OpenStreetMap contributors',
+                  style: TextStyle(
+                    fontSize: 8.0,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white54 : Colors.black54,
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 6. Bottom Active Hotel Quick Preview Card ──
             if (widget.selectedHotel != null)
               Positioned(
                 bottom: 12,
@@ -260,36 +320,78 @@ class _InteractiveHotelMapState extends State<InteractiveHotelMap>
       ),
     );
   }
+}
 
-  Offset _calculateMarkerOffset({
-    required int index,
-    required int total,
-    required Offset center,
-    required double zoom,
-  }) {
-    if (total == 0) return center;
-    final angle = (2 * pi * index) / total + (pi / 6);
-    final distance = (60.0 + (index % 3) * 35.0) * zoom;
-    return Offset(
-      center.dx + distance * cos(angle),
-      center.dy + distance * sin(angle) * 0.75,
+// ─────────────────────────────────────────────────────────────────────────────
+// CURRENT USER GPS MARKER
+// ─────────────────────────────────────────────────────────────────────────────
+class _CurrentUserGpsMarker extends StatelessWidget {
+  final Animation<double> pulseAnimation;
+
+  const _CurrentUserGpsMarker({required this.pulseAnimation});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: pulseAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: pulseAnimation.value,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.blueAccent.withOpacity(0.3),
+                  ),
+                ),
+              );
+            },
+          ),
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF1E88E5),
+              border: Border.all(color: Colors.white, width: 3.0),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blueAccent.withOpacity(0.6),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.navigation_rounded,
+                size: 11,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USER LOCATION PIN WITH RADAR PULSE
+// SEARCH CENTER RADAR PIN
 // ─────────────────────────────────────────────────────────────────────────────
-class _UserLocationPin extends StatelessWidget {
+class _SearchCenterRadarPin extends StatelessWidget {
   final Animation<double> pulseAnimation;
 
-  const _UserLocationPin({required this.pulseAnimation});
+  const _SearchCenterRadarPin({required this.pulseAnimation});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
+    return Center(
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -331,14 +433,14 @@ class _UserLocationPin extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HOTEL MAP MARKER PIN WITH PRICE BADGE
+// HOTEL REAL MAP MARKER
 // ─────────────────────────────────────────────────────────────────────────────
-class _HotelMapMarker extends StatelessWidget {
+class _HotelRealMapMarker extends StatelessWidget {
   final Hotel hotel;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _HotelMapMarker({
+  const _HotelRealMapMarker({
     required this.hotel,
     required this.isSelected,
     required this.onTap,
@@ -347,9 +449,11 @@ class _HotelMapMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final catColor = hotel.category.color;
+    final hasPrice = hotel.pricePerNightPkr != null && hotel.pricePerNightPkr! > 0;
 
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedScale(
         scale: isSelected ? 1.25 : 1.0,
         duration: const Duration(milliseconds: 250),
@@ -357,53 +461,57 @@ class _HotelMapMarker extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Price pill badge
+            // Price pill badge or road distance
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
                 color: isSelected ? AppTheme.primary : catColor,
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withOpacity(0.35),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: Text(
-                'PKR ${(hotel.pricePerNightPkr / 1000).toStringAsFixed(0)}k',
+                hasPrice
+                    ? 'PKR ${(hotel.pricePerNightPkr! / 1000).toStringAsFixed(0)}k'
+                    : hotel.distance,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 9.5,
+                  fontSize: 9.0,
                   fontWeight: FontWeight.w900,
                 ),
               ),
             ),
             const SizedBox(height: 2),
 
-            // Marker Icon Circle
+            // Pin Circle Icon
             Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 color: isSelected ? Colors.white : catColor,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: isSelected ? AppTheme.primary : Colors.white,
-                  width: isSelected ? 2.5 : 1.8,
+                  width: isSelected ? 2.5 : 1.6,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: (isSelected ? AppTheme.primary : catColor).withOpacity(0.4),
-                    blurRadius: 10,
+                    color: (isSelected ? AppTheme.primary : catColor).withOpacity(0.45),
+                    blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
                 ],
               ),
               child: Icon(
                 hotel.category.icon,
-                size: 16,
+                size: 15,
                 color: isSelected ? AppTheme.primary : Colors.white,
               ),
             ),
@@ -415,7 +523,7 @@ class _HotelMapMarker extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SELECTED HOTEL QUICK PREVIEW CARD OVERLAY
+// SELECTED HOTEL QUICK CARD PREVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 class _SelectedHotelQuickCard extends StatelessWidget {
   final Hotel hotel;
@@ -426,6 +534,8 @@ class _SelectedHotelQuickCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasRating = hotel.rating != null && hotel.rating! > 0;
+    final hasPrice = hotel.pricePerNightPkr != null && hotel.pricePerNightPkr! > 0;
 
     return GestureDetector(
       onTap: onTap,
@@ -482,23 +592,44 @@ class _SelectedHotelQuickCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      const Icon(Icons.star_rounded, color: Colors.amber, size: 13),
-                      const SizedBox(width: 2),
-                      Text(
-                        '${hotel.rating} (${hotel.reviewCount})',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white70 : Colors.black87,
+                      if (hasRating) ...[
+                        const Icon(Icons.star_rounded, color: Colors.amber, size: 13),
+                        const SizedBox(width: 2),
+                        Text(
+                          hotel.rating!.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text('•', style: TextStyle(fontSize: 10, color: isDark ? Colors.white38 : Colors.black38)),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          hotel.distance,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '• ${hotel.distance}',
-                        style: const TextStyle(
-                          fontSize: 10.5,
-                          color: AppTheme.primary,
-                          fontWeight: FontWeight.w700,
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          '• ${hotel.badgeLabel}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.white54 : Colors.black54,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -508,22 +639,39 @@ class _SelectedHotelQuickCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Price badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppTheme.primary,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                hotel.formattedPrice.replaceAll(' / night', ''),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
+            // Price badge or view badge
+            if (hasPrice)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  'PKR ${(hotel.pricePerNightPkr! / 1000).toStringAsFixed(0)}k',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'View',
+                  style: TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -532,24 +680,26 @@ class _SelectedHotelQuickCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MAP CONTROL BUTTON (ZOOM / RECENTER)
+// MAP CONTROL BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
 class _MapControlBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool isDark;
   final bool highlight;
+  final String? tooltip;
 
   const _MapControlBtn({
     required this.icon,
     required this.onTap,
     required this.isDark,
     this.highlight = false,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final btn = GestureDetector(
       onTap: onTap,
       child: Container(
         width: 34,
@@ -580,89 +730,10 @@ class _MapControlBtn extends StatelessWidget {
         ),
       ),
     );
+
+    if (tooltip != null) {
+      return Tooltip(message: tooltip!, child: btn);
+    }
+    return btn;
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VECTOR MAP CANVAS PAINTER (PAKISTAN TOPOGRAPHY & ROADS)
-// ─────────────────────────────────────────────────────────────────────────────
-class _HotelVectorMapPainter extends CustomPainter {
-  final bool isDark;
-
-  _HotelVectorMapPainter({required this.isDark});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()
-      ..color = isDark ? const Color(0xFF141918) : const Color(0xFFE9EEEA);
-    canvas.drawRect(Offset.zero & size, bgPaint);
-
-    final roadPaint = Paint()
-      ..color = isDark ? const Color(0xFF232C2A) : const Color(0xFFD6DDD8)
-      ..strokeWidth = 3.0
-      ..style = PaintingStyle.stroke;
-
-    final highwayPaint = Paint()
-      ..color = isDark ? const Color(0xFF2F3B38) : const Color(0xFFC7D3CB)
-      ..strokeWidth = 6.0
-      ..style = PaintingStyle.stroke;
-
-    final riverPaint = Paint()
-      ..color = isDark
-          ? const Color(0xFF1B3834).withOpacity(0.6)
-          : const Color(0xFFBFE0DA).withOpacity(0.8)
-      ..strokeWidth = 7.0
-      ..style = PaintingStyle.stroke;
-
-    // Scenic river / lake path
-    final riverPath = Path();
-    riverPath.moveTo(0, size.height * 0.2);
-    riverPath.cubicTo(
-      size.width * 0.35,
-      size.height * 0.3,
-      size.width * 0.6,
-      size.height * 0.7,
-      size.width,
-      size.height * 0.85,
-    );
-    canvas.drawPath(riverPath, riverPaint);
-
-    // Highway (KKH / Motorway representation)
-    final highwayPath = Path();
-    highwayPath.moveTo(size.width * 0.1, 0);
-    highwayPath.cubicTo(
-      size.width * 0.4,
-      size.height * 0.35,
-      size.width * 0.55,
-      size.height * 0.65,
-      size.width * 0.9,
-      size.height,
-    );
-    canvas.drawPath(highwayPath, highwayPaint);
-
-    // Secondary city roads
-    final r1 = Path()
-      ..moveTo(0, size.height * 0.55)
-      ..lineTo(size.width, size.height * 0.45);
-    final r2 = Path()
-      ..moveTo(size.width * 0.75, 0)
-      ..lineTo(size.width * 0.25, size.height);
-    canvas.drawPath(r1, roadPaint);
-    canvas.drawPath(r2, roadPaint);
-
-    // Radar distance concentric rings
-    final center = Offset(size.width / 2, size.height / 2);
-    final ringPaint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withOpacity(0.04)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    canvas.drawCircle(center, 50, ringPaint);
-    canvas.drawCircle(center, 100, ringPaint);
-    canvas.drawCircle(center, 150, ringPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _HotelVectorMapPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
 }

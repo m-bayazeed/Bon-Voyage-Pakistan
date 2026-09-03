@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/hotel_model.dart';
+import '../services/hotel_location_service.dart';
 import '../theme/app_theme.dart';
 
 /// Navigation intent result representation.
@@ -21,13 +23,13 @@ class NavigationActionInfo {
 }
 
 /// Abstracted navigation service for launching directions, deep links,
-/// or in-app directions dialogs without coupling UI to external packages.
+/// or in-app directions dialogs with live device GPS as origin.
 class HotelNavigationService {
   /// Generate navigation intent info for a specific hotel.
-  static NavigationActionInfo getNavigationInfo(Hotel hotel) {
-    final encodedAddr = Uri.encodeComponent('${hotel.name}, ${hotel.address}');
+  static Future<NavigationActionInfo> getNavigationInfo(Hotel hotel) async {
+    final gps = await HotelLocationService.getCurrentLocation();
     final mapsUrl =
-        'https://www.google.com/maps/dir/?api=1&destination=${hotel.latitude},${hotel.longitude}&query=$encodedAddr';
+        'https://www.google.com/maps/dir/?api=1&origin=${gps.latitude},${gps.longitude}&destination=${hotel.latitude},${hotel.longitude}&travelmode=driving';
 
     return NavigationActionInfo(
       title: hotel.name,
@@ -38,12 +40,48 @@ class HotelNavigationService {
     );
   }
 
+  /// Launch external Google Maps turn-by-turn driving navigation from current device GPS to hotel.
+  static Future<void> launchGoogleMapsDirections(BuildContext context, Hotel hotel) async {
+    try {
+      final gps = await HotelLocationService.getCurrentLocation();
+      final urlStr =
+          'https://www.google.com/maps/dir/?api=1&origin=${gps.latitude},${gps.longitude}&destination=${hotel.latitude},${hotel.longitude}&travelmode=driving';
+      final uri = Uri.parse(urlStr);
+
+      debugPrint('\n========== DIRECTIONS DEBUG ==========');
+      debugPrint('Current GPS: ${gps.latitude}, ${gps.longitude}');
+      debugPrint('Hotel: ${hotel.name}');
+      debugPrint('Destination: ${hotel.latitude}, ${hotel.longitude}');
+      debugPrint('Generated Google Maps URL: $urlStr');
+      debugPrint('=======================================\n');
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('[Directions] Error launching Google Maps: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to launch Google Maps: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   /// Displays an interactive, responsive navigation and routing dialog.
-  static void showNavigationModal(BuildContext context, Hotel hotel) {
+  static void showNavigationModal(BuildContext context, Hotel hotel) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
     final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
-    final navInfo = getNavigationInfo(hotel);
+    final navInfo = await getNavigationInfo(hotel);
+
+    if (!context.mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -100,28 +138,26 @@ class HotelNavigationService {
                     size: 24,
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Route to ${hotel.name}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        'Directions & Route',
                         style: TextStyle(
-                          fontSize: 17,
+                          fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: onBg,
+                          letterSpacing: -0.3,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
-                        '${hotel.distance} • ~${hotel.estimatedTravelTime} drive via main highway',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primary,
+                        'Live road distance & driving route from your GPS',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: onVar,
                         ),
                       ),
                     ],
@@ -129,19 +165,16 @@ class HotelNavigationService {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
 
-            // Address card
+            // Destination card
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: isDark
-                    ? AppTheme.darkSurfaceVariant.withOpacity(0.4)
-                    : AppTheme.lightSurfaceVariant.withOpacity(0.6),
+                color: isDark ? AppTheme.darkSurfaceVariant.withOpacity(0.5) : AppTheme.lightSurfaceVariant,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                  color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
                 ),
               ),
               child: Column(
@@ -149,54 +182,124 @@ class HotelNavigationService {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.location_on_rounded, color: AppTheme.primary, size: 16),
-                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: hotel.category.color.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          hotel.badgeLabel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: hotel.category.color,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
                       Text(
-                        'DESTINATION ADDRESS',
-                        style: TextStyle(
-                          fontSize: 10.5,
+                        hotel.distance,
+                        style: const TextStyle(
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w800,
-                          color: onVar,
-                          letterSpacing: 0.6,
+                          color: AppTheme.primary,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
-                    hotel.address,
+                    hotel.name,
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
                       color: onBg,
-                      height: 1.35,
                     ),
                   ),
-                  if (hotel.landmarkNearby.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Landmark: ${hotel.landmarkNearby}',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: onVar,
-                        fontStyle: FontStyle.italic,
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on_rounded, size: 14, color: onVar),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          hotel.address,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: onVar),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+
+            // Route details chips
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.darkSurfaceVariant.withOpacity(0.3) : Colors.grey.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.straighten_rounded, color: AppTheme.primary, size: 18),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Road Distance',
+                          style: TextStyle(fontSize: 10, color: onVar),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hotel.distance,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: onBg),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.darkSurfaceVariant.withOpacity(0.3) : Colors.grey.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.access_time_filled_rounded, color: Colors.teal, size: 18),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Driving ETA',
+                          style: TextStyle(fontSize: 10, color: onVar),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hotel.estimatedTravelTime,
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: onBg),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
 
-            // Action buttons
+            // Action Buttons
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(
-                        text: '${hotel.latitude}, ${hotel.longitude}',
-                      ));
+                      Clipboard.setData(ClipboardData(text: '${hotel.latitude}, ${hotel.longitude}'));
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -231,21 +334,11 @@ class HotelNavigationService {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Launching navigation to ${hotel.name} (${hotel.distance})...',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          backgroundColor: AppTheme.primary,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      );
+                      launchGoogleMapsDirections(context, hotel);
                     },
                     icon: const Icon(Icons.navigation_rounded, size: 17),
                     label: const Text(
-                      'Start Turn-by-Turn',
+                      'Open Google Maps',
                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                     ),
                     style: ElevatedButton.styleFrom(

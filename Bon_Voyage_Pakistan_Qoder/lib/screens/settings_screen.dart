@@ -151,7 +151,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   children: [
                                     const Icon(Icons.check_circle_rounded, color: AppTheme.primary, size: 18),
                                     const SizedBox(width: 8),
-                                    Text('Username changed to "$newName"'),
+                                    Expanded(
+                                      child: Text(
+                                        'Username changed to "$newName"',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,

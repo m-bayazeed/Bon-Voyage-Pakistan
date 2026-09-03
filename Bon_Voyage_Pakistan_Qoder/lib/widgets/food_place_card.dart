@@ -16,6 +16,7 @@ class FoodPlaceCard extends StatelessWidget {
     this.isSelected = false,
   });
 
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -372,7 +373,13 @@ class FoodPlaceCard extends StatelessWidget {
                                     children: [
                                       const Icon(Icons.phone_rounded, color: AppTheme.primary, size: 18),
                                       const SizedBox(width: 8),
-                                      Text('Calling ${place.name}: ${place.phone}'),
+                                      Expanded(
+                                        child: Text(
+                                          'Calling ${place.name}: ${place.phone}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   backgroundColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
@@ -420,6 +427,8 @@ class FoodPlaceCard extends StatelessWidget {
                         ),
                       ],
                     ),
+
+
                   ],
                 ),
               ),

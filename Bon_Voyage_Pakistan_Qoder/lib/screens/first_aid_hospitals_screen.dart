@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/medical_facility_model.dart';
+import '../services/hotel_location_service.dart';
 import '../services/medical_assistance_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
@@ -33,12 +35,19 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
   String _searchQuery = '';
   final TextEditingController _searchCtrl = TextEditingController();
 
+  // ── Real-world Location Separation ──
+  double? _deviceGpsLat;
+  double? _deviceGpsLng;
+  double? _searchCenterLat;
+  double? _searchCenterLng;
+
   // ── Data State ──
   List<MedicalFacility> _facilities = [];
   List<HelplineItem> _helplines = [];
   MedicalFacility? _selectedMapFacility;
 
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _hasSearched = false;
   bool _isHelplinesLoading = true;
   String? _errorMessage;
 
@@ -56,7 +65,76 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
     _setupAnimations();
     _entranceCtrl.forward();
 
-    _loadData();
+    _initLocationAndLoad();
+  }
+
+  Future<void> _initLocationAndLoad() async {
+    try {
+      final pos = await HotelLocationService.getCurrentLocation();
+      if (mounted) {
+        setState(() {
+          _deviceGpsLat = pos.latitude;
+          _deviceGpsLng = pos.longitude;
+        });
+      }
+    } catch (_) {}
+
+    try {
+      final point = await HotelLocationService.resolveDestination(_selectedCity);
+      if (mounted) {
+        setState(() {
+          _searchCenterLat = point.latitude;
+          _searchCenterLng = point.longitude;
+        });
+      }
+    } catch (_) {}
+
+    // Load verified emergency helplines immediately for emergency preparedness
+    try {
+      final helplines = await MedicalAssistanceService.getEmergencyHelplines();
+      if (mounted) {
+        setState(() {
+          _helplines = helplines;
+          _isHelplinesLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isHelplinesLoading = false);
+    }
+  }
+
+  Future<void> _launchGoogleMapsNavigation(MedicalFacility facility) async {
+    try {
+      double originLat;
+      double originLon;
+      if (_deviceGpsLat != null && _deviceGpsLng != null) {
+        originLat = _deviceGpsLat!;
+        originLon = _deviceGpsLng!;
+      } else {
+        final gps = await HotelLocationService.getCurrentLocation();
+        originLat = gps.latitude;
+        originLon = gps.longitude;
+      }
+      final urlStr =
+          'https://www.google.com/maps/dir/?api=1&origin=$originLat,$originLon&destination=${facility.latitude},${facility.longitude}&travelmode=driving';
+      final uri = Uri.parse(urlStr);
+
+      debugPrint('\n========== MEDICAL NAVIGATION DEBUG ==========');
+      debugPrint('User Device GPS: $originLat, $originLon');
+      debugPrint('Facility: ${facility.name}');
+      debugPrint('Facility Coords: ${facility.latitude}, ${facility.longitude}');
+      debugPrint('Google Maps URL: $urlStr');
+      debugPrint('==============================================\n');
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('[HelpNavigation] Error launching Google Maps: $e');
+      _showSnackbar('Unable to launch Google Maps: $e');
+    }
   }
 
   void _setupAnimations() {
@@ -80,6 +158,7 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
 
   Future<void> _loadData() async {
     setState(() {
+      _hasSearched = true;
       _isLoading = true;
       _errorMessage = null;
     });
@@ -88,9 +167,13 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
       final helplinesFuture = MedicalAssistanceService.getEmergencyHelplines();
       final facilitiesFuture = MedicalAssistanceService.getFacilities(
         type: _selectedType,
-        query: _searchQuery,
+        query: _searchQuery.isEmpty ? null : _searchQuery,
         city: _selectedCity,
         emergencyOnly: _isEmergencyMode,
+        userLat: _deviceGpsLat,
+        userLng: _deviceGpsLng,
+        searchLat: _searchCenterLat,
+        searchLng: _searchCenterLng,
       );
 
       final helplines = await helplinesFuture;
@@ -111,12 +194,36 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
       });
     } catch (e, stackTrace) {
       debugPrint('LOAD MEDICAL DATA ERROR: $e');
+      // Auto-retry once silently after 300ms before ever showing an error
+      try {
+        await Future.delayed(const Duration(milliseconds: 300));
+        final retryFacilities = await MedicalAssistanceService.getFacilities(
+          type: _selectedType,
+          city: _selectedCity,
+          emergencyOnly: _isEmergencyMode,
+          query: _searchQuery.isEmpty ? null : _searchQuery,
+          userLat: _deviceGpsLat,
+          userLng: _deviceGpsLng,
+          searchLat: _searchCenterLat,
+          searchLng: _searchCenterLng,
+        );
+        if (mounted) {
+          setState(() {
+            _facilities = retryFacilities;
+            _isLoading = false;
+            _isHelplinesLoading = false;
+            _selectedMapFacility = retryFacilities.isNotEmpty ? retryFacilities.first : null;
+          });
+          return;
+        }
+      } catch (_) {}
+
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         setState(() {
           _isLoading = false;
           _isHelplinesLoading = false;
-          _errorMessage = 'Unable to fetch medical facilities. Please check your connection and retry.';
+          _errorMessage = 'Unable to load nearby places. Please try again.';
         });
       }
     }
@@ -133,22 +240,47 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
         _isEmergencyMode = (type == FacilityType.emergency);
       }
     });
-    _loadData();
+    if (_hasSearched) {
+      _loadData();
+    }
   }
 
-  void _onCityChanged(String newCity) {
+  void _onCityChanged(String newCity) async {
     HapticFeedback.selectionClick();
+    final isGps = newCity.contains('Current Location');
     setState(() {
       _selectedCity = newCity;
     });
-    _loadData();
+
+    if (isGps) {
+      _searchCenterLat = _deviceGpsLat;
+      _searchCenterLng = _deviceGpsLng;
+    } else {
+      try {
+        final point = await HotelLocationService.resolveDestination(newCity);
+        if (mounted) {
+          setState(() {
+            _searchCenterLat = point.latitude;
+            _searchCenterLng = point.longitude;
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (_hasSearched) {
+      _loadData();
+    } else {
+      _showSnackbar('Selected "$newCity". Tap "Search Care" to find facilities.');
+    }
   }
 
   void _onSearchChanged(String query) {
     setState(() {
       _searchQuery = query;
     });
-    _loadData();
+    if (_hasSearched) {
+      _loadData();
+    }
   }
 
   void _triggerCallDialog(String title, String phone, String description) {
@@ -374,7 +506,7 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    _showSnackbar('Launching GPS Navigation to ${facility.name}...');
+                    _launchGoogleMapsNavigation(facility);
                   },
                   icon: const Icon(Icons.navigation_rounded),
                   label: const Text('Start Navigation (Google Maps / Waze)'),
@@ -895,6 +1027,11 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
                     // ── Medical Assistance Category Dropdown (Above Map Radar) ──
                     _buildCategorySelector(),
 
+                    const SizedBox(height: 16),
+
+                    // ── Prominent Search Action Button (matching Hotels page) ──
+                    _buildSearchActionButton(),
+
                     const SizedBox(height: 22),
 
                     // ── Interactive Map Section ──
@@ -1169,6 +1306,42 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // 3. MANUAL SEARCH MEDICAL CARE ACTION BUTTON (matching Hotels page)
+  // ─────────────────────────────────────────────────────────────────────────────
+  Widget _buildSearchActionButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: _isLoading ? null : _loadData,
+        icon: _isLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              )
+            : const Icon(Icons.travel_explore_rounded, size: 20),
+        label: Text(
+          _isLoading
+              ? 'Finding Medical Facilities...'
+              : 'Search Medical Care in $_selectedCity',
+          style: const TextStyle(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _isEmergencyMode ? const Color(0xFFD32F2F) : AppTheme.primary,
+          foregroundColor: Colors.white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // 4. EMERGENCY HELPLINES SECTION (8x1 GRID)
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildEmergencyHelplinesSection() {
@@ -1306,11 +1479,18 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
         InteractiveMedicalMap(
           facilities: _facilities,
           selectedFacility: _selectedMapFacility,
+          centerLat: _searchCenterLat,
+          centerLng: _searchCenterLng,
+          userLat: _deviceGpsLat,
+          userLng: _deviceGpsLng,
           isEmergencyActive: _isEmergencyMode,
           height: 290,
           onFacilitySelected: (f) {
             setState(() => _selectedMapFacility = f);
             _showFacilityDetailsModal(f);
+          },
+          onDirectionsTap: (f) {
+            _launchGoogleMapsNavigation(f);
           },
           onRecenter: () {
             _showSnackbar('GPS Location re-centered on $_selectedCity.');
@@ -1332,26 +1512,54 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Nearby Facilities',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: isDark ? Colors.white : Colors.black87,
+            Flexible(
+              child: Text(
+                'Nearby Facilities',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
             ),
-            if (_isEmergencyMode)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'Emergency Wards Only',
-                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.redAccent),
-                ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isEmergencyMode) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'Emergency',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.redAccent),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      _hasSearched
+                          ? '${_facilities.length} found'
+                          : 'Select & Search',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ),
           ],
         ),
         const SizedBox(height: 10),
@@ -1397,6 +1605,83 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildFacilitiesContent() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Initial state before user initiates search (matching Hotels page)
+    if (!_hasSearched && !_isLoading) {
+      final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
+      final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: (_isEmergencyMode ? Colors.redAccent : AppTheme.primary).withOpacity(0.25),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: (_isEmergencyMode ? Colors.redAccent : AppTheme.primary).withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _isEmergencyMode ? Icons.emergency_rounded : Icons.local_hospital_rounded,
+                size: 38,
+                color: _isEmergencyMode ? Colors.redAccent : AppTheme.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Locate Medical Facilities in $_selectedCity',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: onBg,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Select required assistance type above, then tap "Search Medical Care" to discover verified trauma centers, hospitals, and 24/7 pharmacies within 30 km with live road routing.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.45,
+                color: onVar,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.search_rounded, size: 18),
+              label: Text(
+                'Search Medical Care in $_selectedCity',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isEmergencyMode ? const Color(0xFFD32F2F) : AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 2,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     // Loading state
     if (_isLoading) {
@@ -1470,7 +1755,8 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
             const Icon(Icons.location_off_rounded, color: AppTheme.primary, size: 42),
             const SizedBox(height: 10),
             Text(
-              'No Matching Facilities Found',
+              'No suitable places found within the selected radius.',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,

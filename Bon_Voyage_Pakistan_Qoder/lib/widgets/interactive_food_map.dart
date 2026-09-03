@@ -1,23 +1,36 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' hide Path;
 import '../models/food_place_model.dart';
+import '../services/food_navigation_service.dart';
 import '../theme/app_theme.dart';
 
-/// Interactive vector radar map widget for Food & Dining locations.
+/// Real Interactive Vector Tile Map for Food & Dining locations with Geoapify OSM Cartography,
+/// distinct User GPS beacon, exact Restaurant markers, zoom controls, and quick card preview.
 class InteractiveFoodMap extends StatefulWidget {
   final List<FoodPlace> places;
   final FoodPlace? selectedPlace;
+  final double? centerLat;
+  final double? centerLng;
+  final double? userLat;
+  final double? userLng;
   final ValueChanged<FoodPlace?> onPlaceSelected;
   final VoidCallback? onDirectionsTap;
+  final VoidCallback? onRecenter;
   final double height;
 
   const InteractiveFoodMap({
     super.key,
     required this.places,
     this.selectedPlace,
+    this.centerLat,
+    this.centerLng,
+    this.userLat,
+    this.userLng,
     required this.onPlaceSelected,
     this.onDirectionsTap,
-    this.height = 240,
+    this.onRecenter,
+    this.height = 260,
   });
 
   @override
@@ -26,267 +39,293 @@ class InteractiveFoodMap extends StatefulWidget {
 
 class _InteractiveFoodMapState extends State<InteractiveFoodMap>
     with SingleTickerProviderStateMixin {
+  late final MapController _mapController;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
-  double _zoom = 1.0;
-  Offset _panOffset = Offset.zero;
+  static const String _geoapifyApiKey = '454af56eb7eb4805ab7fc12bd150891a';
 
   @override
   void initState() {
     super.initState();
+    _mapController = MapController();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat();
-    _pulseAnimation = CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeOut,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.4).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant InteractiveFoodMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.centerLat != oldWidget.centerLat ||
+        widget.centerLng != oldWidget.centerLng) {
+      final lat = widget.centerLat ?? widget.userLat ?? 33.6844;
+      final lng = widget.centerLng ?? widget.userLng ?? 73.0479;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          _mapController.move(LatLng(lat, lng), 12.8);
+        } catch (_) {}
+      });
+    } else if (widget.selectedPlace != null &&
+        widget.selectedPlace?.id != oldWidget.selectedPlace?.id) {
+      final sel = widget.selectedPlace!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          _mapController.move(LatLng(sel.latitude, sel.longitude), 14.5);
+        } catch (_) {}
+      });
+    }
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
-  void _reCenter() {
-    setState(() {
-      _zoom = 1.0;
-      _panOffset = Offset.zero;
-    });
+  void _zoomIn() {
+    final center = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(center, (currentZoom + 1).clamp(4.0, 18.0));
+  }
+
+  void _zoomOut() {
+    final center = _mapController.camera.center;
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(center, (currentZoom - 1).clamp(4.0, 18.0));
+  }
+
+  void _recenter() {
+    final lat = widget.centerLat ??
+        widget.userLat ??
+        (widget.places.isNotEmpty ? widget.places.first.latitude : 33.6844);
+    final lng = widget.centerLng ??
+        widget.userLng ??
+        (widget.places.isNotEmpty ? widget.places.first.longitude : 73.0479);
+    _mapController.move(LatLng(lat, lng), 13.0);
+    widget.onRecenter?.call();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final onSurface = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
-    final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
+    final searchLat = widget.centerLat ??
+        widget.userLat ??
+        (widget.places.isNotEmpty ? widget.places.first.latitude : 33.6844);
+    final searchLng = widget.centerLng ??
+        widget.userLng ??
+        (widget.places.isNotEmpty ? widget.places.first.longitude : 73.0479);
+    final searchCenterPoint = LatLng(searchLat, searchLng);
+
+    final hasUserGps = widget.userLat != null && widget.userLng != null;
+    final userGpsPoint = hasUserGps ? LatLng(widget.userLat!, widget.userLng!) : null;
+    final isSearchSameAsGps = hasUserGps &&
+        (searchLat - widget.userLat!).abs() < 0.001 &&
+        (searchLng - widget.userLng!).abs() < 0.001;
 
     return Container(
-      height: widget.height,
       width: double.infinity,
+      height: widget.height,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF13190E) : const Color(0xFFEFF5E6),
-        borderRadius: BorderRadius.circular(22),
+        color: isDark ? const Color(0xFF141918) : const Color(0xFFE8ECE9),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: AppTheme.primary.withValues(alpha: isDark ? 0.35 : 0.25),
-          width: 1.5,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.06),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: AppTheme.primary.withValues(alpha: isDark ? 0.12 : 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // Gesture Detector for Pan & Zoom
-            GestureDetector(
-              onScaleUpdate: (details) {
-                setState(() {
-                  _zoom = (_zoom * details.scale).clamp(0.7, 2.5);
-                  _panOffset += details.focalPointDelta;
-                });
-              },
-              child: AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, _) {
-                  return CustomPaint(
-                    size: Size(double.infinity, widget.height),
-                    painter: _FoodMapPainter(
-                      places: widget.places,
-                      selectedPlace: widget.selectedPlace,
-                      pulseValue: _pulseAnimation.value,
-                      isDark: isDark,
-                      zoom: _zoom,
-                      panOffset: _panOffset,
-                    ),
-                  );
-                },
+            // ── 1. Real Geoapify OSM-Bright Map Tiles ──
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: searchCenterPoint,
+                initialZoom: 12.5,
+                minZoom: 4.0,
+                maxZoom: 18.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                ),
               ),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=$_geoapifyApiKey',
+                  fallbackUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.bonvoyage.pakistan',
+                  maxZoom: 19,
+                ),
+
+                // ── 2. Real Geoapify Markers Layer ──
+                MarkerLayer(
+                  markers: [
+                    // Search Center Anchor (when distinct from user GPS)
+                    if (!isSearchSameAsGps)
+                      Marker(
+                        point: searchCenterPoint,
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        child: _SearchCenterRadarPin(pulseAnimation: _pulseAnimation),
+                      ),
+
+                    // Current Device Location GPS Pin
+                    if (userGpsPoint != null)
+                      Marker(
+                        point: userGpsPoint,
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        child: _CurrentUserGpsMarker(pulseAnimation: _pulseAnimation),
+                      ),
+
+                    // Food Place Markers at Exact Coordinates
+                    ...widget.places.map((place) {
+                      final isSelected = widget.selectedPlace?.id == place.id;
+                      return Marker(
+                        point: LatLng(place.latitude, place.longitude),
+                        width: 76,
+                        height: 56,
+                        alignment: Alignment.center,
+                        child: _FoodRealMapMarker(
+                          place: place,
+                          isSelected: isSelected,
+                          onTap: () {
+                            _mapController.move(LatLng(place.latitude, place.longitude), 14.5);
+                            widget.onPlaceSelected(place);
+                          },
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ],
             ),
 
-            // Top Status & Places Count Badge
+            // ── 3. Top Info Pill ──
             Positioned(
               top: 12,
               left: 14,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppTheme.darkSurface.withValues(alpha: 0.9)
-                      : AppTheme.lightSurface.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.06),
+              right: 64,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: (isDark ? const Color(0xFF1E2624) : Colors.white).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : Colors.black.withValues(alpha: 0.08),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.primary,
-                        shape: BoxShape.circle,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE65100), // Rich food orange
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${widget.places.length} Food Spots on Map',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: onSurface,
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '${widget.places.length} Food Spots • 30 km radius',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
 
-            // Map Controls (Zoom In, Zoom Out, Reset)
+            // ── 4. Map Control Buttons (Recenter & Zoom) ──
             Positioned(
               top: 12,
               right: 12,
               child: Column(
                 children: [
-                  _buildControlBtn(
-                    icon: Icons.add_rounded,
-                    onTap: () => setState(() => _zoom = (_zoom + 0.25).clamp(0.7, 2.5)),
-                    isDark: isDark,
-                  ),
-                  const SizedBox(height: 6),
-                  _buildControlBtn(
-                    icon: Icons.remove_rounded,
-                    onTap: () => setState(() => _zoom = (_zoom - 0.25).clamp(0.7, 2.5)),
-                    isDark: isDark,
-                  ),
-                  const SizedBox(height: 6),
-                  _buildControlBtn(
+                  _MapIconButton(
                     icon: Icons.my_location_rounded,
-                    onTap: _reCenter,
+                    tooltip: 'Recenter Map',
                     isDark: isDark,
+                    onTap: _recenter,
+                  ),
+                  const SizedBox(height: 6),
+                  _MapIconButton(
+                    icon: Icons.add_rounded,
+                    tooltip: 'Zoom In',
+                    isDark: isDark,
+                    onTap: _zoomIn,
+                  ),
+                  const SizedBox(height: 6),
+                  _MapIconButton(
+                    icon: Icons.remove_rounded,
+                    tooltip: 'Zoom Out',
+                    isDark: isDark,
+                    onTap: _zoomOut,
                   ),
                 ],
               ),
             ),
 
-            // Selected Food Place Quick Info Pill (Bottom Overlay)
+            // ── 5. Selected Food Place Quick Card Preview ──
             if (widget.selectedPlace != null)
               Positioned(
-                bottom: 12,
                 left: 12,
                 right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.4),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      // Category Icon Box
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: widget.selectedPlace!.category.color.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          widget.selectedPlace!.category.icon,
-                          color: widget.selectedPlace!.category.color,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // Details
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.selectedPlace!.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                const Icon(Icons.star_rounded, color: Color(0xFFFFA000), size: 13),
-                                const SizedBox(width: 2),
-                                Text(
-                                  widget.selectedPlace!.rating.toStringAsFixed(1),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: onSurface,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '•  ${widget.selectedPlace!.distance}',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '•  ${widget.selectedPlace!.formattedCost}',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: onVar,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Close Preview
-                      GestureDetector(
-                        onTap: () => widget.onPlaceSelected(null),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: onVar.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(Icons.close_rounded, size: 14, color: onVar),
-                        ),
-                      ),
-                    ],
-                  ),
+                bottom: 12,
+                child: _FoodQuickPreviewCard(
+                  place: widget.selectedPlace!,
+                  isDark: isDark,
+                  userLat: widget.userLat,
+                  userLng: widget.userLng,
+                  onClose: () => widget.onPlaceSelected(null),
+                  onDirections: () {
+                    widget.onDirectionsTap?.call();
+                    FoodNavigationService.launchGoogleMapsDirections(
+                      context,
+                      widget.selectedPlace!,
+                      userLat: widget.userLat,
+                      userLng: widget.userLng,
+                    );
+                  },
                 ),
               ),
           ],
@@ -294,195 +333,386 @@ class _InteractiveFoodMapState extends State<InteractiveFoodMap>
       ),
     );
   }
+}
 
-  Widget _buildControlBtn({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-  }) {
-    return Material(
-      color: isDark
-          ? AppTheme.darkSurface.withValues(alpha: 0.9)
-          : AppTheme.lightSurface.withValues(alpha: 0.92),
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.06),
+/// Food Marker on real map with price, category color, rating, and interactive tap
+class _FoodRealMapMarker extends StatelessWidget {
+  final FoodPlace place;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FoodRealMapMarker({
+    required this.place,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final catColor = place.category.color;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedScale(
+        scale: isSelected ? 1.15 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Pill tag
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFFE65100) : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? Colors.white : catColor,
+                  width: isSelected ? 2.0 : 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    place.category.icon,
+                    size: 11,
+                    color: isSelected ? Colors.white : catColor,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    '★ ${place.rating.toStringAsFixed(1)}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isSelected ? Colors.white : const Color(0xFF2D312E),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          child: Icon(icon, size: 16, color: AppTheme.primary),
+            // Pin Triangle
+            CustomPaint(
+              size: const Size(8, 5),
+              painter: _TrianglePainter(
+                color: isSelected ? const Color(0xFFE65100) : Colors.white,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Custom Vector Canvas Painter for rendering topographic radar grid and food place pins.
-class _FoodMapPainter extends CustomPainter {
-  final List<FoodPlace> places;
-  final FoodPlace? selectedPlace;
-  final double pulseValue;
-  final bool isDark;
-  final double zoom;
-  final Offset panOffset;
+/// User GPS Marker beacon
+class _CurrentUserGpsMarker extends StatelessWidget {
+  final Animation<double> pulseAnimation;
 
-  _FoodMapPainter({
-    required this.places,
-    required this.selectedPlace,
-    required this.pulseValue,
+  const _CurrentUserGpsMarker({required this.pulseAnimation});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pulseAnimation,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 38 * pulseAnimation.value,
+              height: 38 * pulseAnimation.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF2196F3).withValues(alpha: (0.4 / pulseAnimation.value).clamp(0.0, 0.4)),
+              ),
+            ),
+            Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1976D2),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Search Center Radar Pin
+class _SearchCenterRadarPin extends StatelessWidget {
+  final Animation<double> pulseAnimation;
+
+  const _SearchCenterRadarPin({required this.pulseAnimation});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pulseAnimation,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 34 * pulseAnimation.value,
+              height: 34 * pulseAnimation.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primary.withValues(alpha: (0.3 / pulseAnimation.value).clamp(0.0, 0.3)),
+              ),
+            ),
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: AppTheme.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2.5),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Quick preview card for selected food spot on map
+class _FoodQuickPreviewCard extends StatelessWidget {
+  final FoodPlace place;
+  final bool isDark;
+  final double? userLat;
+  final double? userLng;
+  final VoidCallback onClose;
+  final VoidCallback onDirections;
+
+  const _FoodQuickPreviewCard({
+    required this.place,
     required this.isDark,
-    required this.zoom,
-    required this.panOffset,
+    this.userLat,
+    this.userLng,
+    required this.onClose,
+    required this.onDirections,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2) + panOffset;
+  Widget build(BuildContext context) {
+    final onBg = isDark ? Colors.white : const Color(0xFF1C1B1F);
+    final onVar = isDark ? const Color(0xFFCAC4D0) : const Color(0xFF49454F);
 
-    // 1. Draw Radar Grid Lines & Concentric Distance Rings
-    final gridPaint = Paint()
-      ..color = isDark
-          ? const Color(0xFF5A7328).withValues(alpha: 0.12)
-          : const Color(0xFF5A7328).withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    final rings = [45.0, 90.0, 140.0, 190.0];
-    for (final radius in rings) {
-      canvas.drawCircle(center, radius * zoom, gridPaint);
-    }
-
-    // Grid crosshairs
-    final crossHairPaint = Paint()
-      ..color = isDark
-          ? const Color(0xFF5A7328).withValues(alpha: 0.08)
-          : const Color(0xFF5A7328).withValues(alpha: 0.1)
-      ..strokeWidth = 1.0;
-
-    canvas.drawLine(
-      Offset(center.dx - 220 * zoom, center.dy),
-      Offset(center.dx + 220 * zoom, center.dy),
-      crossHairPaint,
-    );
-    canvas.drawLine(
-      Offset(center.dx, center.dy - 180 * zoom),
-      Offset(center.dx, center.dy + 180 * zoom),
-      crossHairPaint,
-    );
-
-    // 2. User Center Location (Pulsing GPS Pin)
-    final pulsePaint = Paint()
-      ..color = AppTheme.primary.withValues(alpha: (1.0 - pulseValue) * 0.4)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, (12 + pulseValue * 22) * zoom, pulsePaint);
-
-    final userPinPaint = Paint()
-      ..color = AppTheme.primary
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, 7 * zoom, userPinPaint);
-
-    final userPinCore = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, 3 * zoom, userPinCore);
-
-    // 3. Render Food Place Marker Pins
-    if (places.isEmpty) return;
-
-    // Find coordinate bounds to project pins relative to center
-    double minLat = places.first.latitude;
-    double maxLat = places.first.latitude;
-    double minLng = places.first.longitude;
-    double maxLng = places.first.longitude;
-
-    for (final p in places) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
-
-    final latSpan = (maxLat - minLat).clamp(0.01, 10.0);
-    final lngSpan = (maxLng - minLng).clamp(0.01, 10.0);
-
-    for (int i = 0; i < places.length; i++) {
-      final place = places[i];
-      final isSelected = selectedPlace?.id == place.id;
-
-      // Calculate radial pseudo-offset for pleasant scattering around user
-      final normX = ((place.longitude - minLng) / lngSpan - 0.5) * 2.0;
-      final normY = -((place.latitude - minLat) / latSpan - 0.5) * 2.0;
-
-      final angle = (i * 0.95) % (2 * math.pi);
-      final radius = (38.0 + (i % 4) * 36.0) * zoom;
-
-      final pinX = center.dx + (normX * 85 * zoom) + (math.cos(angle) * radius * 0.5);
-      final pinY = center.dy + (normY * 65 * zoom) + (math.sin(angle) * radius * 0.5);
-      final pinPos = Offset(pinX, pinY);
-
-      // Pin connecting line to center
-      final linePaint = Paint()
-        ..color = (isSelected ? AppTheme.primary : place.category.color)
-            .withValues(alpha: isSelected ? 0.35 : 0.12)
-        ..strokeWidth = isSelected ? 1.5 : 1.0;
-      canvas.drawLine(center, pinPos, linePaint);
-
-      // Pin Outer Glow if selected
-      if (isSelected) {
-        final glowPaint = Paint()
-          ..color = AppTheme.primary.withValues(alpha: 0.35)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(pinPos, 18 * zoom, glowPaint);
-      }
-
-      // Pin Body
-      final pinBodyPaint = Paint()
-        ..color = isSelected ? AppTheme.primary : place.category.color
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(pinPos, (isSelected ? 12 : 9) * zoom, pinBodyPaint);
-
-      // Pin White Border
-      final pinBorderPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-      canvas.drawCircle(pinPos, (isSelected ? 12 : 9) * zoom, pinBorderPaint);
-
-      // Rating / Price label on top of selected pin
-      if (isSelected || places.length <= 6) {
-        final textSpan = TextSpan(
-          text: place.name.length > 12 ? '${place.name.substring(0, 11)}…' : place.name,
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black87,
-            fontSize: 10 * zoom,
-            fontWeight: FontWeight.w700,
-            backgroundColor: (isDark ? const Color(0xFF1E2816) : Colors.white)
-                .withValues(alpha: 0.85),
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (isDark ? const Color(0xFF1E2624) : Colors.white).withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
-        );
-        final textPainter = TextPainter(
-          text: textSpan,
-          textDirection: TextDirection.ltr,
-        )..layout();
+        ],
+      ),
+      child: Row(
+        children: [
+          // Restaurant thumbnail
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 54,
+              height: 54,
+              child: place.imageUrl.isNotEmpty
+                  ? Image.network(
+                      place.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: place.category.color.withValues(alpha: 0.2),
+                        child: Icon(place.category.icon, color: place.category.color, size: 24),
+                      ),
+                    )
+                  : Container(
+                      color: place.category.color.withValues(alpha: 0.2),
+                      child: Icon(place.category.icon, color: place.category.color, size: 24),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 10),
 
-        textPainter.paint(
-          canvas,
-          Offset(pinPos.dx - textPainter.width / 2, pinPos.dy - 20 * zoom),
-        );
-      }
-    }
+          // Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  place.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: onBg,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300)),
+                    const SizedBox(width: 2),
+                    Text(
+                      place.rating.toStringAsFixed(1),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: onBg),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '•  ${place.distance} (~${place.estimatedTravelTime})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  place.cuisine,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, color: onVar),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Direction button & Close button
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: onClose,
+                child: Padding(
+                  padding: const EdgeInsets.all(2.0),
+                  child: Icon(Icons.close_rounded, size: 16, color: onVar),
+                ),
+              ),
+              const SizedBox(height: 4),
+              ElevatedButton(
+                onPressed: onDirections,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.directions_rounded, size: 13),
+                    SizedBox(width: 3),
+                    Text('Go', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _MapIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: (isDark ? const Color(0xFF1E2624) : Colors.white).withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: isDark ? Colors.white : const Color(0xFF2D312E),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrianglePainter extends CustomPainter {
+  final Color color;
+
+  _TrianglePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width, 0)
+      ..close();
+
+    canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _FoodMapPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _TrianglePainter oldDelegate) =>
+      color != oldDelegate.color;
 }

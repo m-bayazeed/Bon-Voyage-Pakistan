@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import '../models/trip_checklist_item_model.dart';
 import '../models/trip_plan_model.dart';
+import '../services/trip_checklist_service.dart';
 import '../services/trip_history_service.dart';
 import '../services/trip_api_service.dart';
 import '../widgets/formatted_ai_text.dart';
 import '../theme/app_theme.dart';
+import 'trip_checklist_screen.dart';
+
 
 /// Screen state modes: 0 = Form, 1 = AI Chat Planning, 2 = Saved Trip History
 enum AiPlanningMode { form, chat, history }
@@ -373,6 +377,54 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
 
     _scrollChatToBottom();
 
+    // Check for explicit local checklist commands (e.g. "add hiking boots to day 2 checklist")
+    final lower = text.toLowerCase();
+    if (lower.startsWith('add ') && lower.contains('checklist') || lower.contains('remind me to ') || lower.startsWith('add to day ')) {
+      // Parse day number if present
+      final dayMatch = RegExp(r'day\s*(\d+)', caseSensitive: false).firstMatch(text);
+      int? dayNum;
+      if (dayMatch != null) {
+        dayNum = int.tryParse(dayMatch.group(1) ?? '');
+      }
+
+      // Extract title
+      String taskTitle = text
+          .replaceAll(RegExp(r'^(add|remind me to)\s+', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\s+to\s+(day\s*\d+\s+)?checklist', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\s+to\s+day\s*\d+', caseSensitive: false), '')
+          .trim();
+
+      if (taskTitle.isNotEmpty) {
+        // Automatically add or offer confirmation
+        final added = await TripChecklistService.addItem(
+          title: taskTitle,
+          category: ChecklistCategory.task,
+          dayNumber: dayNum,
+          explicitPlanId: _activeTripPlan?.id,
+        );
+
+        if (!mounted) return;
+
+        final aiReply = ChatMessage(
+          id: 'ai-${DateTime.now().millisecondsSinceEpoch}',
+          text: added != null
+              ? "I have added <b>\"$taskTitle\"</b> to your ${dayNum != null ? 'Day $dayNum' : 'Trip-wide'} checklist! You can view or check it off anytime in <b>Trip Checklist & Notes</b>."
+              : "I've noted that! Would you like to add <b>\"$taskTitle\"</b> to your Trip Checklist?",
+          isAi: true,
+          checklistActionTitle: added == null ? taskTitle : null,
+          checklistActionDayNumber: dayNum,
+        );
+
+        setState(() {
+          _chatMessages.add(aiReply);
+          _isAiReplying = false;
+        });
+
+        _scrollChatToBottom();
+        return;
+      }
+    }
+
     try {
       final chatResult = await TripApiService.sendChatMessage(
         message: text,
@@ -413,6 +465,7 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
     _scrollChatToBottom();
   }
 
+
   void _scrollChatToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_chatScrollController.hasClients) {
@@ -434,6 +487,9 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
 
     final finalized = _activeTripPlan!.copyWith(isFinalized: true);
     await TripHistoryService.saveTripPlan(finalized);
+    
+    // Automatically initialize plan-aware checklist in SQLite
+    await TripChecklistService.initializeChecklistForPlan(finalized);
 
     if (!mounted) return;
 
@@ -489,7 +545,7 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Your spots & attractions guide for ${plan.destinationCity} has been generated and saved to your travel history.',
+                  'Your trip plan has been saved and your plan-aware Trip Checklist & Notes has been activated with day-by-day activities, stays, and recommendations.',
                   style: TextStyle(
                     color: onVariant,
                     fontSize: 13,
@@ -525,7 +581,29 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+                // Trip Checklist Direct Action Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TripChecklistScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.checklist_rounded, size: 18),
+                    label: const Text('Open Trip Checklist & Notes', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF5A7328),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
@@ -537,10 +615,10 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.primary,
                           side: const BorderSide(color: AppTheme.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
-                        child: const Text('View History', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        child: const Text('View History', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -552,10 +630,10 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primary,
                           foregroundColor: AppTheme.onPrimary,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
-                        child: const Text('Keep Chatting', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        child: const Text('Keep Chatting', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                       ),
                     ),
                   ],
@@ -567,6 +645,7 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
       },
     );
   }
+
 
   // ──────────────────────────────────────────────
   // BUILD METHOD
@@ -1581,8 +1660,10 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? AppTheme.darkSurface : AppTheme.lightSurface;
     final onSurface = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
+    final onVariant = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
 
     if (!msg.isAi) {
+
       // User message bubble
       return Align(
         alignment: Alignment.centerRight,
@@ -1668,13 +1749,100 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
                   ),
                 ],
               ),
-              child: FormattedAiText(
-                text: msg.text,
-                style: TextStyle(
-                  color: onSurface,
-                  fontSize: 14,
-                  height: 1.48,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FormattedAiText(
+                    text: msg.text,
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: 14,
+                      height: 1.48,
+                    ),
+                  ),
+                  if (msg.checklistActionTitle != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.checklist_rounded, size: 18, color: AppTheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Add "${msg.checklistActionTitle}" to ${msg.checklistActionDayNumber != null ? "Day ${msg.checklistActionDayNumber}" : "Checklist"}?',
+                              style: TextStyle(color: onSurface, fontSize: 12.5, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (!msg.isChecklistActionAdded)
+                      Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              await TripChecklistService.addItem(
+                                title: msg.checklistActionTitle!,
+                                category: ChecklistCategory.task,
+                                dayNumber: msg.checklistActionDayNumber,
+                                explicitPlanId: _activeTripPlan?.id,
+                              );
+                              setState(() {
+                                final idx = _chatMessages.indexOf(msg);
+                                if (idx != -1) {
+                                  _chatMessages[idx] = msg.copyWith(isChecklistActionAdded: true);
+                                }
+                              });
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Added "${msg.checklistActionTitle}" to Trip Checklist!'),
+                                    backgroundColor: const Color(0xFF5A7328),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.check, size: 14),
+                            label: const Text('Add to Checklist', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primary,
+                              foregroundColor: AppTheme.onPrimary,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                final idx = _chatMessages.indexOf(msg);
+                                if (idx != -1) {
+                                  _chatMessages[idx] = msg.copyWith(isChecklistActionAdded: true);
+                                }
+                              });
+                            },
+                            child: Text('Not now', style: TextStyle(color: onVariant, fontSize: 12)),
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, size: 15, color: Colors.green),
+                          const SizedBox(width: 5),
+                          Text('Added to Trip Checklist', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -1682,6 +1850,7 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
       ),
     );
   }
+
 
   Widget _buildItineraryCard(TripPlan plan) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

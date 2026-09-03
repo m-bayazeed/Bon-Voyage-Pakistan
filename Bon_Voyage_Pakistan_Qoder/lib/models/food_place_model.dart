@@ -219,6 +219,7 @@ class FoodPlace {
   final bool hasDineIn;
   final bool hasTakeaway;
   final bool hasDelivery;
+  final String? directionsUrl;
 
   const FoodPlace({
     required this.id,
@@ -248,6 +249,7 @@ class FoodPlace {
     this.hasDineIn = true,
     this.hasTakeaway = true,
     this.hasDelivery = false,
+    this.directionsUrl,
   });
 
   /// Formatted cost per person (e.g. "PKR 1,500 / person").
@@ -306,31 +308,32 @@ class FoodPlace {
       longitude: (json['longitude'] as num?)?.toDouble() ?? 73.0479,
       city: json['city'] as String? ?? 'Islamabad',
       address: json['address'] as String? ?? '',
-      distance: json['distance'] as String? ?? 'Nearby',
-      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 1.0,
-      estimatedTravelTime: json['estimatedTravelTime'] as String? ?? '5 mins',
+      distance: json['distance'] as String? ?? (json['distance_km'] != null ? '${json['distance_km']} km' : 'Nearby'),
+      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? (json['distance_km'] as num?)?.toDouble() ?? 1.0,
+      estimatedTravelTime: json['estimatedTravelTime'] as String? ?? (json['eta_minutes'] != null ? '${json['eta_minutes']} mins' : '5 mins'),
       rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
-      reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 120,
-      priceTier: _parsePriceTier(json['priceTier'] as String?),
-      avgCostPerPersonPkr: (json['avgCostPerPersonPkr'] as num?)?.toInt() ?? 1000,
-      imageUrl: json['imageUrl'] as String? ?? '',
+      reviewCount: (json['reviewCount'] as num?)?.toInt() ?? (json['reviews_count'] as num?)?.toInt() ?? 120,
+      priceTier: _parsePriceTier(json['priceTier'] as String? ?? json['price_tier'] as String?),
+      avgCostPerPersonPkr: (json['avgCostPerPersonPkr'] as num?)?.toInt() ?? (json['avg_cost_per_person_pkr'] as num?)?.toInt() ?? 1000,
+      imageUrl: json['imageUrl'] as String? ?? json['image_url'] as String? ?? '',
       galleryImages: (json['galleryImages'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           const [],
-      isOpen: json['isOpen'] as bool? ?? true,
-      openingHours: json['openingHours'] as String? ?? '12:00 PM - 12:00 AM',
+      isOpen: json['isOpen'] as bool? ?? json['is_open'] as bool? ?? true,
+      openingHours: json['openingHours'] as String? ?? json['opening_hours'] as String? ?? '12:00 PM - 12:00 AM',
       phone: json['phone'] as String? ?? '+92-51-111-111-111',
       specialties: (json['specialties'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           const ['Special Karahi', 'Hot Naan'],
       description: json['description'] as String? ?? '',
-      popularReview: json['popularReview'] as String?,
-      landmarkNearby: json['landmarkNearby'] as String? ?? '',
+      popularReview: json['popularReview'] as String? ?? json['popular_review'] as String?,
+      landmarkNearby: json['landmarkNearby'] as String? ?? json['landmark_nearby'] as String? ?? '',
       hasDineIn: json['hasDineIn'] as bool? ?? true,
       hasTakeaway: json['hasTakeaway'] as bool? ?? true,
       hasDelivery: json['hasDelivery'] as bool? ?? false,
+      directionsUrl: json['directions_url'] as String? ?? json['directionsUrl'] as String?,
     );
   }
 

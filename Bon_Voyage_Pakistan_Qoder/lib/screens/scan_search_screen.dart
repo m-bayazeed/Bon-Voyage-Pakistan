@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -467,13 +468,26 @@ class _ScanSearchScreenState extends State<ScanSearchScreen>
       });
 
       _loadHistory();
-      _showResultSheet(resultItem);
+
+      if (resultItem.searchStatus == 'Identified' && resultItem.confidenceScore > 0.0) {
+        _showResultSheet(resultItem);
+      } else if (resultItem.searchStatus == 'Error') {
+        _showSnackbar(resultItem.shortDescription.isNotEmpty
+            ? resultItem.shortDescription
+            : 'Unable to connect to Landmark Scanner. Please verify backend is running.');
+      } else {
+        _showSnackbar(
+          resultItem.shortDescription.isNotEmpty
+              ? resultItem.shortDescription
+              : 'The landmark could not be identified reliably from this image.',
+        );
+      }
     } catch (e, stackTrace) {
-      debugPrint('AI ANALYSIS ERROR: $e');
+      debugPrint('[SCAN] AI ANALYSIS ERROR: $e');
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         setState(() => _isAnalyzing = false);
-        _showSnackbar('AI Recognition encountered an issue. Image is saved to History.');
+        _showSnackbar('AI Recognition encountered an issue: $e');
       }
     }
   }
@@ -541,6 +555,10 @@ class _ScanSearchScreenState extends State<ScanSearchScreen>
         onSelect: (item) {
           Navigator.pop(ctx);
           _showResultSheet(item);
+        },
+        onDelete: (item) async {
+          await ScanHistoryService.deleteScanItem(item.id);
+          _loadHistory();
         },
         onClear: () async {
           await ScanHistoryService.clearHistory();
@@ -1437,54 +1455,75 @@ class _RecentScansCard extends StatelessWidget {
                                 ? Colors.white.withValues(alpha: 0.06)
                                 : Colors.black.withValues(alpha: 0.04)),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Stack(
                         children: [
-                          Row(children: [
-                            _thumb(item),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(item.title,
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                _thumb(item),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: EdgeInsets.only(right: item.isFavorite ? 18 : 0),
+                                        child: Text(item.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                color: onSurface,
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w800)),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                          item.scanType == ScanType.camera
+                                              ? '📷 Camera'
+                                              : '🖼️ Gallery',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              color: AppTheme.primary,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700)),
+                                    ],
+                                  ),
+                                ),
+                              ]),
+                              const SizedBox(height: 4),
+                              Row(children: [
+                                const Icon(Icons.location_on_rounded,
+                                    color: AppTheme.primary, size: 12),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(item.location,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                          color: onSurface,
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w800)),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                      item.scanType == ScanType.camera
-                                          ? '📷 Camera'
-                                          : '🖼️ Gallery',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          color: AppTheme.primary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700)),
-                                ],
+                                          color: onVar,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w500)),
+                                ),
+                              ]),
+                            ],
+                          ),
+                          if (item.isFavorite)
+                            Positioned(
+                              top: -2,
+                              right: -2,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent.withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.favorite_rounded,
+                                    color: Colors.redAccent, size: 13),
                               ),
                             ),
-                          ]),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            const Icon(Icons.location_on_rounded,
-                                color: AppTheme.primary, size: 12),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(item.location,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      color: onVar,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w500)),
-                            ),
-                          ]),
                         ],
                       ),
                     ),
@@ -1512,7 +1551,89 @@ class _LandmarkDetailSheet extends StatefulWidget {
 }
 
 class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
+  late bool _isFavorite;
+  final AudioPlayer _audioPlayer = AudioPlayer();
   bool _audioPlaying = false;
+  bool _audioLoading = false;
+  String? _cachedAudioPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFavorite = widget.item.isFavorite;
+
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _audioPlaying = false);
+    });
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _audioPlaying = (state == PlayerState.playing));
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggleAudioStory() async {
+    if (_audioLoading) return;
+    HapticFeedback.lightImpact();
+
+    if (_audioPlaying) {
+      await _audioPlayer.pause();
+      if (mounted) setState(() => _audioPlaying = false);
+      return;
+    }
+
+    if (_cachedAudioPath != null && File(_cachedAudioPath!).existsSync()) {
+      await _audioPlayer.play(DeviceFileSource(_cachedAudioPath!));
+      if (mounted) setState(() => _audioPlaying = true);
+      return;
+    }
+
+    final storyText = widget.item.historicalStory.isNotEmpty
+        ? widget.item.historicalStory
+        : widget.item.shortDescription;
+
+    if (storyText.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No landmark story available for audio synthesis.')),
+      );
+      return;
+    }
+
+    setState(() => _audioLoading = true);
+
+    try {
+      final audioFilePath = await ScanHistoryService.fetchStoryAudio(
+        storyText: storyText,
+        itemId: widget.item.id,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _audioLoading = false;
+        _cachedAudioPath = audioFilePath;
+      });
+
+      if (audioFilePath != null && File(audioFilePath).existsSync()) {
+        await _audioPlayer.play(DeviceFileSource(audioFilePath));
+        if (mounted) setState(() => _audioPlaying = true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio generation failed. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _audioLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Audio playback error: $e')),
+      );
+    }
+  }
 
   Widget _heroImage() {
     final item = widget.item;
@@ -1614,17 +1735,21 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
                       top: 12,
                       right: 12,
                       child: GestureDetector(
-                        onTap: widget.onFavoriteToggle,
+                        onTap: () {
+                          setState(() => _isFavorite = !_isFavorite);
+                          HapticFeedback.lightImpact();
+                          widget.onFavoriteToggle();
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                               color: Colors.black.withOpacity(0.55),
                               shape: BoxShape.circle),
                           child: Icon(
-                              item.isFavorite
+                              _isFavorite
                                   ? Icons.favorite_rounded
                                   : Icons.favorite_border_rounded,
-                              color: item.isFavorite
+                              color: _isFavorite
                                   ? Colors.redAccent
                                   : Colors.white,
                               size: 20),
@@ -1671,7 +1796,7 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
 
                 const SizedBox(height: 16),
 
-                // Audio tour preview bar
+                // Audio tour preview bar with Real TTS Playback
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -1684,21 +1809,26 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
                   ),
                   child: Row(children: [
                     GestureDetector(
-                      onTap: () {
-                        setState(() => _audioPlaying = !_audioPlaying);
-                        HapticFeedback.lightImpact();
-                      },
+                      onTap: _toggleAudioStory,
                       child: Container(
                         width: 42,
                         height: 42,
                         decoration: const BoxDecoration(
                             color: AppTheme.primary, shape: BoxShape.circle),
-                        child: Icon(
-                            _audioPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            color: AppTheme.onPrimary,
-                            size: 24),
+                        child: _audioLoading
+                            ? const Padding(
+                                padding: EdgeInsets.all(10),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: AppTheme.onPrimary,
+                                ),
+                              )
+                            : Icon(
+                                _audioPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: AppTheme.onPrimary,
+                                size: 24),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1707,15 +1837,20 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                           Text(
-                              _audioPlaying
-                                  ? 'Playing AI Voice Guide...'
-                                  : 'Listen to AI Audio Story',
+                              _audioLoading
+                                  ? 'Generating AI Audio Story...'
+                                  : (_audioPlaying
+                                      ? 'Playing AI Audio Story...'
+                                      : 'Listen to AI Audio Story'),
                               style: TextStyle(
                                   color: onS,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13)),
                           const SizedBox(height: 2),
-                          Text('2-min narrated summary with cultural lore',
+                          Text(
+                              _audioLoading
+                                  ? 'Synthesizing voice narration via AI...'
+                                  : 'Narrated summary with cultural lore',
                               style: TextStyle(color: onV, fontSize: 11)),
                         ])),
                     const Icon(Icons.headphones_rounded,
@@ -1865,14 +2000,38 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FULL HISTORY SHEET
+// FULL HISTORY SHEET (WITH INDIVIDUAL DELETE & LIKED BADGE)
 // ─────────────────────────────────────────────────────────────────────────────
-class _FullHistorySheet extends StatelessWidget {
+class _FullHistorySheet extends StatefulWidget {
   final List<ScanItem> history;
   final ValueChanged<ScanItem> onSelect;
+  final ValueChanged<ScanItem> onDelete;
   final VoidCallback onClear;
-  const _FullHistorySheet(
-      {required this.history, required this.onSelect, required this.onClear});
+  const _FullHistorySheet({
+    required this.history,
+    required this.onSelect,
+    required this.onDelete,
+    required this.onClear,
+  });
+
+  @override
+  State<_FullHistorySheet> createState() => _FullHistorySheetState();
+}
+
+class _FullHistorySheetState extends State<_FullHistorySheet> {
+  late List<ScanItem> _localHistory;
+
+  @override
+  void initState() {
+    super.initState();
+    _localHistory = List.from(widget.history);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FullHistorySheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _localHistory = List.from(widget.history);
+  }
 
   Widget _thumb(ScanItem item) {
     if (item.imagePath != null && File(item.imagePath!).existsSync()) {
@@ -1929,9 +2088,9 @@ class _FullHistorySheet extends StatelessWidget {
                       color: onS,
                       fontSize: 18,
                       fontWeight: FontWeight.w800)),
-              if (history.isNotEmpty)
+              if (_localHistory.isNotEmpty)
                 TextButton.icon(
-                  onPressed: onClear,
+                  onPressed: widget.onClear,
                   icon: const Icon(Icons.delete_outline_rounded,
                       size: 16, color: Colors.redAccent),
                   label: const Text('Clear All',
@@ -1943,36 +2102,72 @@ class _FullHistorySheet extends StatelessWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          child: history.isEmpty
+          child: _localHistory.isEmpty
               ? Center(
                   child: Text('No scan history yet',
                       style: TextStyle(color: onV)))
               : ListView.separated(
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.all(16),
-                  itemCount: history.length,
+                  itemCount: _localHistory.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (_, i) {
-                    final item = history[i];
+                    final item = _localHistory[i];
                     return ListTile(
-                      onTap: () => onSelect(item),
+                      onTap: () => widget.onSelect(item),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16)),
                       tileColor: isDark
                           ? AppTheme.darkSurfaceVariant.withOpacity(0.4)
                           : AppTheme.lightSurfaceVariant.withOpacity(0.6),
                       leading: _thumb(item),
-                      title: Text(item.title,
-                          style: TextStyle(
-                              color: onS,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14)),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: onS,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14)),
+                          ),
+                          if (item.isFavorite)
+                            Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.favorite_rounded,
+                                  color: Colors.redAccent, size: 14),
+                            ),
+                        ],
+                      ),
                       subtitle: Text(
                           '${item.location} • ${item.scanType == ScanType.camera ? 'Camera' : 'Gallery'}',
                           style:
                               TextStyle(color: onV, fontSize: 11.5)),
-                      trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                          color: AppTheme.primary, size: 14),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                color: Colors.redAccent, size: 20),
+                            tooltip: 'Delete search',
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              setState(() {
+                                _localHistory.removeWhere((h) => h.id == item.id);
+                              });
+                              widget.onDelete(item);
+                            },
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded,
+                              color: AppTheme.primary, size: 14),
+                        ],
+                      ),
                     );
                   },
                 ),
