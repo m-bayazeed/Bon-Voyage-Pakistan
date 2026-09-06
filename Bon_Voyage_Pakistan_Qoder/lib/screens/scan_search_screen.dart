@@ -1647,6 +1647,34 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
         height: 190, width: double.infinity, fit: BoxFit.cover);
   }
 
+  List<String> _resolveThingsToDo(ScanItem item) {
+    final isHistoricalEventRegex = RegExp(
+      r'(^\d{3,4}\b|\b\d{3,4}s?\b|century|dynasty|commissioned|constructed|built in|ruled by|conquered|invaded|reign of|founded in|restored in|restoration|inaugurated|declared a|unesco world heritage)',
+      caseSensitive: false,
+    );
+
+    final validActivities = <String>[];
+    for (final act in item.recommendedActivities) {
+      if (!isHistoricalEventRegex.hasMatch(act) && act.trim().isNotEmpty) {
+        validActivities.add(act);
+      }
+    }
+
+    if (validActivities.isNotEmpty) {
+      return validActivities;
+    }
+
+    final name = item.identifiedLocation ?? (item.title != 'Unidentified Landmark' ? item.title : 'this landmark');
+    final loc = item.location.isNotEmpty && item.location != 'Pakistan' ? item.location : 'the surrounding area';
+
+    return [
+      'Explore the architectural details, courtyards, and grounds of $name.',
+      'Capture scenic photos during early morning or sunset golden hour.',
+      'Discover historical artifacts and cultural heritage at on-site exhibits.',
+      'Stroll through surrounding paths and enjoy authentic local snacks in $loc.',
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1656,6 +1684,7 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
         ? AppTheme.darkOnSurfaceVariant
         : AppTheme.lightOnSurfaceVariant;
     final item = widget.item;
+    final activities = _resolveThingsToDo(item);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.86,
@@ -1901,7 +1930,7 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
                       )),
                 ],
 
-                if (item.recommendedActivities.isNotEmpty) ...[
+                if (activities.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Text('Top Things to Do',
                       style: TextStyle(
@@ -1909,7 +1938,7 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
                           fontSize: 16,
                           fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
-                  ...item.recommendedActivities.map((a) => Container(
+                  ...activities.map((a) => Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 10),
@@ -1967,29 +1996,7 @@ class _LandmarkDetailSheetState extends State<_LandmarkDetailSheet> {
                   ]),
                 ),
 
-                const SizedBox(height: 24),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const AiTourPlanningScreen()));
-                    },
-                    icon: const Icon(Icons.map_rounded),
-                    label: Text('Plan Tour with ${item.title}'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: AppTheme.onPrimary,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(28)),
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 16),
               ],
             ),
           ),

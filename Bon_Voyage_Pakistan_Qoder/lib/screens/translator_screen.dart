@@ -282,6 +282,29 @@ class _TranslatorScreenState extends State<TranslatorScreen>
         _isTranslating = false;
       });
 
+      if (_sourceLanguage.code == 'auto' && detected.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.auto_awesome_rounded, color: AppTheme.onPrimary, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Detected spoken language: $detected',
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.onPrimary),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.primary,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        );
+      }
+
       if (audioBase64.isNotEmpty) {
         setState(() => _isPlayingAudio = true);
         await _audioHandler.playBase64Audio(audioBase64);
@@ -676,11 +699,46 @@ class _TranslatorScreenState extends State<TranslatorScreen>
     );
   }
 
+  String _getFlagForLanguage(String langName) {
+    final lower = langName.toLowerCase().trim();
+    if (lower.contains('urdu') ||
+        lower.contains('pakistan') ||
+        lower.contains('punjabi') ||
+        lower.contains('pashto') ||
+        lower.contains('sindhi') ||
+        lower.contains('balochi') ||
+        lower.contains('kashmiri') ||
+        lower.contains('shina') ||
+        lower.contains('balti')) {
+      return '🇵🇰';
+    }
+    if (lower.contains('english')) return '🇬🇧';
+    if (lower.contains('arabic')) return '🇸🇦';
+    if (lower.contains('french')) return '🇫🇷';
+    if (lower.contains('german')) return '🇩🇪';
+    if (lower.contains('chinese')) return '🇨🇳';
+    if (lower.contains('spanish')) return '🇪🇸';
+    if (lower.contains('russian')) return '🇷🇺';
+    if (lower.contains('hindi')) return '🇮🇳';
+    if (lower.contains('persian') || lower.contains('farsi')) return '🇮🇷';
+    if (lower.contains('turkish')) return '🇹🇷';
+    if (lower.contains('italian')) return '🇮🇹';
+    if (lower.contains('japanese')) return '🇯🇵';
+    return '🌐';
+  }
+
+  String _getSourceFlag() {
+    if (_sourceLanguage.code == 'auto' && _detectedLanguage.isNotEmpty && _hasUserInput) {
+      return _getFlagForLanguage(_detectedLanguage);
+    }
+    return _sourceLanguage.flag;
+  }
+
   // ── Source Title on Face of Dropdown ──
   String _getSourcePillTitle() {
     if (_sourceLanguage.code == 'auto') {
       if (_detectedLanguage.isNotEmpty && _hasUserInput) {
-        return 'Auto Detect ($_detectedLanguage)';
+        return 'Auto: $_detectedLanguage';
       }
       return 'Auto Detect';
     }
@@ -718,7 +776,7 @@ class _TranslatorScreenState extends State<TranslatorScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(_sourceLanguage.flag, style: const TextStyle(fontSize: 16)),
+                  Text(_getSourceFlag(), style: const TextStyle(fontSize: 16)),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
@@ -842,6 +900,35 @@ class _TranslatorScreenState extends State<TranslatorScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_sourceLanguage.code == 'auto' && _detectedLanguage.isNotEmpty && _hasUserInput) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, color: AppTheme.primary, size: 15),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Detected Language: $_detectedLanguage',
+                    style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           TextField(
             controller: _inputController,
             maxLines: 4,
@@ -938,6 +1025,26 @@ class _TranslatorScreenState extends State<TranslatorScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_sourceLanguage.code == 'auto' && _detectedLanguage.isNotEmpty && _hasUserInput && !_isTranslating) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$_detectedLanguage  ➔  ${_targetLanguage.name}',
+                  style: TextStyle(
+                    color: onVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
           Align(
             alignment: _targetLanguage.code == 'ur' ? Alignment.centerRight : Alignment.centerLeft,
             child: _isTranslating

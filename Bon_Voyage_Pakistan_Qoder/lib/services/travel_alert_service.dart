@@ -273,8 +273,8 @@ class BackendAlertDataProvider implements AlertDataProvider {
 
       try {
         debugPrint('[Notifications] Attempting backend: $uri');
-        // Increased timeout from 4s to 10s for robust network response
-        final response = await http.get(uri).timeout(const Duration(seconds: 10));
+        // Fast failover timeout (3s per candidate host)
+        final response = await http.get(uri).timeout(const Duration(seconds: 3));
 
         if (response.statusCode == 200) {
           final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -454,7 +454,7 @@ class TravelAlertService {
         for (final port in candidatePorts) {
           try {
             final uri = Uri.parse('http://$host:$port/api/v1/notifications');
-            final response = await http.get(uri).timeout(const Duration(seconds: 10));
+            final response = await http.get(uri).timeout(const Duration(seconds: 3));
 
             if (response.statusCode == 200) {
               final data = json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;

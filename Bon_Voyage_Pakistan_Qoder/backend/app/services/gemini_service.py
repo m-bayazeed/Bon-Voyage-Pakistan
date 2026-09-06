@@ -100,8 +100,9 @@ Return ONLY valid JSON, no markdown blocks."""
                 logger.warning(f"Groq fallback model {groq_model} failed: {ge}")
 
         # Final local fallback
+        fallback_lang = "Urdu" if any("\u0600" <= c <= "\u06FF" for c in text) else "English"
         return TranslationEngineOutput(
-            detected_source_language=source_display,
+            detected_source_language=fallback_lang if source_display in ["auto", "auto-detected language"] else source_display,
             source_romanized_pronunciation=text,
             translated_text=text,
             romanized_pronunciation=text,

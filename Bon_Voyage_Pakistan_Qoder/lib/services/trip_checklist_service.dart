@@ -47,6 +47,7 @@ class TripChecklistService {
             user_id INTEGER,
             title TEXT NOT NULL,
             category TEXT NOT NULL,
+            custom_tag TEXT,
             reference_id TEXT,
             day_number INTEGER,
             day_title TEXT,
@@ -58,6 +59,13 @@ class TripChecklistService {
         await db.execute(
           'CREATE INDEX idx_checklist_plan_id ON $_tableName(plan_id);',
         );
+      },
+      onOpen: (db) async {
+        try {
+          await db.execute('ALTER TABLE $_tableName ADD COLUMN custom_tag TEXT;');
+        } catch (_) {
+          // Column already exists or table freshly created
+        }
       },
     );
   }
@@ -139,7 +147,7 @@ class TripChecklistService {
         final dayNum = day.dayNumber;
         final dayTitle = _cleanHtml(day.title.isNotEmpty ? day.title : 'Day $dayNum');
 
-        // Activities & Attractions
+        // Activities & Attractions (Places to Visit)
         for (final act in day.activities) {
           final cleanAct = _cleanHtml(act);
           if (cleanAct.isNotEmpty) {
@@ -147,7 +155,8 @@ class TripChecklistService {
               id: 'CHK-${now.millisecondsSinceEpoch}-${itemsToInsert.length}',
               planId: plan.id,
               title: cleanAct,
-              category: ChecklistCategory.plan,
+              category: ChecklistCategory.placesToVisit,
+              customTag: 'Places to Visit',
               dayNumber: dayNum,
               dayTitle: dayTitle,
               isCompleted: false,
@@ -167,6 +176,7 @@ class TripChecklistService {
             planId: plan.id,
             title: cleanStay,
             category: ChecklistCategory.hotel,
+            customTag: 'Hotel',
             dayNumber: dayNum,
             dayTitle: dayTitle,
             isCompleted: false,
@@ -185,6 +195,7 @@ class TripChecklistService {
             planId: plan.id,
             title: cleanFood,
             category: ChecklistCategory.food,
+            customTag: 'Food',
             dayNumber: dayNum,
             dayTitle: dayTitle,
             isCompleted: false,
@@ -220,7 +231,8 @@ class TripChecklistService {
   /// Add a manual task or specific item to the active trip checklist.
   static Future<TripChecklistItem?> addItem({
     required String title,
-    ChecklistCategory category = ChecklistCategory.task,
+    ChecklistCategory? category,
+    String? customTag,
     int? dayNumber,
     String? dayTitle,
     String? referenceId,
@@ -237,11 +249,24 @@ class TripChecklistService {
 
       final db = await database;
 
+      final effectiveTag = customTag ?? TripChecklistItem.inferTagFromContent(title);
+      ChecklistCategory effectiveCategory = category ?? ChecklistCategory.task;
+      if (category == null) {
+        final lower = effectiveTag.toLowerCase();
+        if (lower.contains('place') || lower.contains('visit')) {
+          effectiveCategory = ChecklistCategory.placesToVisit;
+        } else if (lower.contains('hotel') || lower.contains('stay')) {
+          effectiveCategory = ChecklistCategory.hotel;
+        } else if (lower.contains('food') || lower.contains('dining')) {
+          effectiveCategory = ChecklistCategory.food;
+        }
+      }
+
       // Duplicate check: prevent duplicate reference or title for same category & plan
       final existing = await db.query(
         _tableName,
         where: 'plan_id = ? AND category = ? AND (reference_id = ? OR title = ?)',
-        whereArgs: [planId, category.name, referenceId ?? '', title.trim()],
+        whereArgs: [planId, effectiveCategory.name, referenceId ?? '', title.trim()],
       );
 
       if (existing.isNotEmpty) {
@@ -254,7 +279,8 @@ class TripChecklistService {
         id: 'CHK-${now.millisecondsSinceEpoch}-${now.microsecond}',
         planId: planId,
         title: title.trim(),
-        category: category,
+        category: effectiveCategory,
+        customTag: effectiveTag,
         referenceId: referenceId,
         dayNumber: dayNumber,
         dayTitle: dayTitle,
@@ -346,12 +372,9 @@ class TripChecklistService {
   }
 
   /// Internal sorting: Day 1..N, then General/Trip-wide (null), then by creation date.
+  /// Items stay in their exact position without moving to the bottom when completed.
   static void _sortItems(List<TripChecklistItem> items) {
     items.sort((a, b) {
-      // Completed items go to bottom within their day or overall
-      if (a.isCompleted != b.isCompleted) {
-        return a.isCompleted ? 1 : -1;
-      }
       if (a.dayNumber == null && b.dayNumber != null) return 1;
       if (a.dayNumber != null && b.dayNumber == null) return -1;
       if (a.dayNumber != null && b.dayNumber != null) {

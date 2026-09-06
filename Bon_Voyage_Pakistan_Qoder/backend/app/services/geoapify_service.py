@@ -27,71 +27,185 @@ def classify_stay_category(
     name: str,
     categories: List[str],
     tags: Optional[Dict[str, Any]] = None,
+    city: Optional[str] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    address: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Categorize a real place into one of the 5 project categories:
     luxury, resort, boutique, budget, glamping
     Returns (category_key, badge_label).
+    Geographically and contextually aware: strictly prevents 'Mountain Resort'
+    in non-mountainous plains and coastal cities like Multan and Karachi.
     """
-    name_lower = name.lower()
+    name_lower = name.lower().strip()
     cat_str = " ".join(categories).lower()
     tags_str = str(tags or {}).lower()
-    combined = f"{name_lower} {cat_str} {tags_str}"
+    c = (city or "").lower().strip()
+    a = (address or "").lower().strip()
+    combined = f"{name_lower} {cat_str} {tags_str} {c} {a}"
 
-    # 1. Campsite / Glamping
+    # ── 1. GEOGRAPHICAL TERRAIN CONTEXT ──
+    is_coastal = (
+        any(k in c for k in ["karachi", "gwadar", "ormara", "pasni", "manora"])
+        or (lat is not None and lat < 26.0)
+        or any(k in a for k in ["karachi", "clifton", "sea view", "beach", "creek", "port qasim", "hawksbay", "sandspit"])
+    )
+
+    is_mountain = (
+        any(k in c for k in [
+            "hunza", "karimabad", "passu", "skardu", "gilgit", "swat", "kalam",
+            "malam jabba", "murree", "bhurban", "galyat", "galiyat", "nathia",
+            "ayubia", "naran", "kaghan", "chitral", "abbottabad", "ziarat"
+        ])
+        or (lat is not None and lat > 34.2)
+        or (lat is not None and lon is not None and lat > 33.84 and lon > 73.26)
+    )
+
+    is_islamabad = "islamabad" in c or "rawalpindi" in c
+    is_margalla_hills = is_islamabad and (
+        any(k in combined for k in ["pir sohawa", "margalla", "highland", "whispering pines", "sangada"])
+        or (lat is not None and lat > 33.78 and lon is not None and lon > 73.10)
+    )
+
+    # ── 2. BRAND & CHAIN NORMALIZATION ──
+    is_hotel_one = "hotel one" in name_lower
+    is_luxury_brand = any(
+        w in name_lower for w in [
+            "serena", "marriott", "pearl continental", "pearl-continental",
+            "pc hotel", "mvenpick", "movenpick", "nishat", "avari",
+            "faletti", "best western premier", "best western plus",
+            "wyndham grand", "ramada", "intercontinental", "radisson",
+            "kempinski", "sheraton", "four seasons"
+        ]
+    )
+
+    # ── 3. Campsite / Glamping ──
     glamping_keywords = [
         "camping", "camp_site", "glamping", "campsite", "camp", "dome",
-        "tent", "pod", "caravan", "huts", "hut", "chalet", "outdoor", "bivouac"
+        "tent", "pod", "caravan", "huts", "hut", "bivouac"
     ]
     if any(k in combined for k in glamping_keywords) or "camping" in cat_str or "accommodation.hut" in cat_str:
+        if is_coastal:
+            return "glamping", "Beach Glamping"
+        elif is_mountain:
+            if "dome" in name_lower or "stargaz" in name_lower:
+                return "glamping", "Stargazing Domes"
+            return "glamping", "Alpine Glamping"
+        elif is_islamabad:
+            return "glamping", "Margalla Glamping Pods"
         return "glamping", "Campsite / Glamping"
 
-    # 2. 5-Star Luxury
-    luxury_keywords = [
-        "serena", "marriott", "pearl continental", "pc hotel", "luxus",
-        "luxury", "5-star", "5 star", "intercontinental", "radisson",
-        "ramada", "hyatt", "kempinski", "sheraton", "four seasons",
-        "shangrila", "avenue hotel", "nishat", "continental", "grand",
-        "regal", "palace", "resort", "suite", "suites", "5*"
-    ]
-    if any(k in combined for k in luxury_keywords) or "stars:5" in tags_str:
+    # ── 4. Hotel One Chain Override ──
+    if is_hotel_one:
+        return "budget", "Business Comfort Stay"
+
+    # ── 5. Resorts & Retreats ──
+    is_resort = (
+        "accommodation.resort" in cat_str
+        or any(w in name_lower for w in ["resort", "retreat", "country club", "golf club", "golf resort", "ski resort", "beach resort"])
+    )
+
+    if is_resort:
+        if is_coastal:
+            if any(w in name_lower for w in ["beach", "sea", "ocean", "turtle", "hawksbay", "french", "sandspit"]):
+                return "resort", "Beach Resort"
+            elif any(w in name_lower for w in ["waterfront", "creek", "marina", "port"]):
+                return "resort", "Waterfront Resort"
+            elif any(w in name_lower for w in ["golf", "club", "dreamworld"]):
+                return "resort", "Golf & Country Club"
+            return "resort", "Coastal Resort"
+
+        elif is_mountain:
+            if "ski" in name_lower or "malam jabba" in name_lower or "malam" in name_lower:
+                return "resort", "Alpine Ski Resort"
+            elif "lake" in name_lower or "attabad" in name_lower or "shangrila" in name_lower or "kachura" in name_lower:
+                return "resort", "Lakeside Resort"
+            elif "pine" in name_lower or "forest" in name_lower or "woods" in name_lower:
+                return "resort", "Pine Forest Resort"
+            elif "valley" in name_lower or "river" in name_lower or "heights" in name_lower:
+                return "resort", "Valley View Resort"
+            return "resort", "Mountain Resort"
+
+        elif is_islamabad:
+            if is_margalla_hills:
+                return "resort", "Margalla Hill Resort"
+            return "resort", "City Resort & Spa"
+
+        else:
+            # Plains (Multan, Lahore, Faisalabad, Bahawalpur, etc.)
+            if "golf" in name_lower or "rumanza" in name_lower:
+                return "resort", "Golf & Country Resort"
+            elif "heritage" in name_lower:
+                return "resort", "Heritage Resort"
+            elif any(w in name_lower for w in ["oasis", "garden", "farm", "lake"]):
+                return "resort", "Garden & Oasis Resort"
+            return "resort", "City Resort & Spa"
+
+    # ── 6. 5-Star Luxury ──
+    if is_luxury_brand or "stars:5" in tags_str or any(w in name_lower for w in ["5 star", "5-star", "luxury", "grand hotel", "palace", "royal"]):
+        if is_mountain:
+            if any(w in name_lower for w in ["fort", "palace", "serena shigar", "khaplu"]):
+                return "luxury", "Heritage Royal Palace"
+            return "luxury", "5-Star Mountain Luxury"
+        elif is_coastal:
+            return "luxury", "5-Star Luxury"
+        elif is_islamabad:
+            return "luxury", "5-Star Luxury"
+        elif any(w in name_lower for w in ["faletti", "heritage"]):
+            return "luxury", "Grand Heritage Luxury"
+        elif "4 star" in name_lower or "4-star" in name_lower or "ramada" in name_lower or "best western" in name_lower:
+            return "luxury", "4-Star Luxury"
         return "luxury", "5-Star Luxury"
 
-    # 3. Mountain Resort
-    resort_keywords = [
-        "resort", "chalet", "mountain", "alpine", "heights",
-        "valley view", "glade", "ridge", "pine", "hill", "lake view",
-        "peak", "scenic", "river view", "woods", "view", "panoramic",
-        "terrace", "springs", "cliff", "bluff"
-    ]
-    if any(k in combined for k in resort_keywords) or "accommodation.resort" in cat_str or "accommodation.chalet" in cat_str:
-        return "resort", "Mountain Resort"
-
-    # 4. Boutique & Lodge
+    # ── 7. Boutique & Lodge ──
     boutique_keywords = [
         "boutique", "lodge", "inn", "villas", "villa", "cottage",
         "heritage", "fort", "manor", "haven", "retreat", "residence",
-        "club", "house", "residency", "castle", "mansion"
+        "club", "house", "residency", "castle", "mansion", "suites"
     ]
-    if any(k in combined for k in boutique_keywords) or "accommodation.lodge" in cat_str or "accommodation.apartment" in cat_str:
-        return "boutique", "Boutique & Lodge"
+    if any(k in combined for k in boutique_keywords) or "accommodation.lodge" in cat_str or "accommodation.apartment" in cat_str or "stars:4" in tags_str:
+        if is_mountain:
+            if any(w in name_lower for w in ["chalet", "cabin"]):
+                return "boutique", "Alpine Chalet"
+            elif "lodge" in name_lower:
+                return "boutique", "Mountain Lodge"
+            return "boutique", "Alpine Boutique"
+        elif is_coastal:
+            return "boutique", "City Boutique"
+        elif is_islamabad:
+            return "boutique", "Executive Boutique"
+        else:
+            if any(w in name_lower for w in ["heritage", "haveli", "colonial"]):
+                return "boutique", "Heritage Stay"
+            return "boutique", "Boutique & Suites"
 
-    # 5. Guest House / Budget
+    # ── 8. Guest House / Budget ──
     budget_keywords = [
         "guest house", "guesthouse", "hostel", "motel", "budget",
         "dorm", "dormitory", "backpackers", "rooms", "homestay",
         "yha", "rest house", "inn", "hotel", "travelers", "stop"
     ]
     if any(k in combined for k in budget_keywords) or "accommodation.guest_house" in cat_str or "accommodation.hostel" in cat_str or "accommodation.motel" in cat_str:
-        return "budget", "Guest House / Budget"
+        if is_mountain:
+            if any(w in name_lower for w in ["hostel", "backpacker", "trekker"]):
+                return "budget", "Trekker Hostel"
+            return "budget", "Alpine Guest House"
+        elif is_coastal:
+            return "budget", "City Center Stay"
+        elif is_islamabad:
+            return "budget", "Capital Guest House"
+        else:
+            if any(w in name_lower for w in ["guest house", "guesthouse"]):
+                return "budget", "Guest House"
+            return "budget", "Comfort Budget Stay"
 
-    # Default based on star rating if present
-    if "stars:4" in tags_str:
-        return "boutique", "Boutique & Lodge"
-    if "stars:3" in tags_str or "stars:2" in tags_str or "stars:1" in tags_str:
-        return "budget", "Guest House / Budget"
-
-    return "boutique", "Hotel & Lodge"
+    if is_mountain:
+        return "budget", "Alpine Stay"
+    elif is_coastal:
+        return "budget", "Coastal Stay"
+    return "budget", "Hotel & Stay"
 
 
 class GeoapifyService:
@@ -205,7 +319,15 @@ class GeoapifyService:
                     directions_url = f"https://www.google.com/maps/dir/?api=1&origin={calc_origin_lat},{calc_origin_lon}&destination={p_lat},{p_lon}&travelmode=driving"
 
                     raw_tags = props.get("datasource", {}).get("raw", {})
-                    cat_key, badge_label = classify_stay_category(name, categories, raw_tags)
+                    cat_key, badge_label = classify_stay_category(
+                        name=name,
+                        categories=categories,
+                        tags=raw_tags,
+                        city=city,
+                        lat=p_lat,
+                        lon=p_lon,
+                        address=formatted_address,
+                    )
 
                     osm_stars = raw_tags.get("stars")
                     rating = None

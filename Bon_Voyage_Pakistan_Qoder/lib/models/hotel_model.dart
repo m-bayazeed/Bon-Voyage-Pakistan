@@ -18,7 +18,7 @@ extension HotelCategoryExtension on HotelCategory {
       case HotelCategory.luxury:
         return '5-Star Luxury';
       case HotelCategory.resort:
-        return 'Mountain Resort';
+        return 'Resorts & Retreats';
       case HotelCategory.boutique:
         return 'Boutique & Lodge';
       case HotelCategory.budget:
@@ -35,7 +35,7 @@ extension HotelCategoryExtension on HotelCategory {
       case HotelCategory.luxury:
         return Icons.star_rounded;
       case HotelCategory.resort:
-        return Icons.landscape_rounded;
+        return Icons.spa_rounded;
       case HotelCategory.boutique:
         return Icons.villa_rounded;
       case HotelCategory.budget:
@@ -345,16 +345,27 @@ class Hotel {
         json['directionsUrl'] as String? ??
         'https://www.google.com/maps/dir/?api=1&destination=$lat,$lon';
 
+    final rawCity = json['city'] as String? ?? 'Pakistan';
+    final rawName = json['name'] as String? ?? 'Stay in Pakistan';
+    final rawBadge = json['badge_label'] as String? ??
+        json['badgeLabel'] as String? ??
+        parsedCat.displayName;
+
+    final resolvedBadge = _sanitizeBadgeLabel(
+      rawBadge: rawBadge,
+      city: rawCity,
+      name: rawName,
+      category: parsedCat,
+    );
+
     return Hotel(
       id: json['id'] as String? ?? 'HTL-${DateTime.now().millisecondsSinceEpoch}',
-      name: json['name'] as String? ?? 'Stay in Pakistan',
+      name: rawName,
       category: parsedCat,
-      badgeLabel: json['badge_label'] as String? ??
-          json['badgeLabel'] as String? ??
-          parsedCat.displayName,
+      badgeLabel: resolvedBadge,
       latitude: lat,
       longitude: lon,
-      city: json['city'] as String? ?? 'Pakistan',
+      city: rawCity,
       address: json['address'] as String? ?? '',
       distance: distStr,
       distanceKm: distKm,
@@ -411,6 +422,66 @@ class Hotel {
       'landmarkNearby': landmarkNearby,
       'directions_url': directionsUrl,
     };
+  }
+
+  static String _sanitizeBadgeLabel({
+    String? rawBadge,
+    required String city,
+    required String name,
+    required HotelCategory category,
+  }) {
+    String badge = rawBadge?.trim() ?? '';
+    if (badge.isEmpty) {
+      badge = category.displayName;
+    }
+
+    final c = city.toLowerCase();
+    final n = name.toLowerCase();
+
+    final isCoastal = c.contains('karachi') ||
+        c.contains('gwadar') ||
+        n.contains('karachi') ||
+        n.contains('sea view') ||
+        n.contains('turtle beach') ||
+        n.contains('clifton');
+    final isPlains = c.contains('multan') ||
+        c.contains('lahore') ||
+        c.contains('faisalabad') ||
+        c.contains('bahawalpur') ||
+        c.contains('sukkur') ||
+        c.contains('hyderabad') ||
+        n.contains('multan') ||
+        n.contains('lahore');
+
+    // If a hotel in Multan, Karachi, Lahore or other plains city is labeled with "Mountain":
+    if ((isCoastal || isPlains) && badge.toLowerCase().contains('mountain')) {
+      if (isCoastal) {
+        if (n.contains('beach') || n.contains('sea') || n.contains('turtle')) {
+          return 'Beach Resort';
+        } else if (n.contains('waterfront') ||
+            n.contains('creek') ||
+            n.contains('marina')) {
+          return 'Waterfront Resort';
+        } else if (n.contains('golf') ||
+            n.contains('club') ||
+            n.contains('dreamworld')) {
+          return 'Golf & Country Club';
+        }
+        return 'Coastal Resort';
+      } else {
+        // Plains
+        if (n.contains('golf') || n.contains('rumanza')) {
+          return 'Golf & Country Resort';
+        } else if (n.contains('heritage')) {
+          return 'Heritage Resort';
+        } else if (category == HotelCategory.luxury) {
+          return '5-Star Luxury';
+        }
+        return 'City Resort & Spa';
+      }
+    }
+
+    return badge;
   }
 
   static HotelCategory _parseCategory(String? raw) {

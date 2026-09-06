@@ -5,10 +5,10 @@ import 'package:bon_voyage_pakistan/models/trip_plan_model.dart';
 void main() {
   group('TripChecklistItem Model & Origin Tags Tests', () {
     test('Smart Origin Tags and Icons match requirements', () {
-      expect(ChecklistCategory.hotel.originTag, equals('[🏨 Hotel]'));
-      expect(ChecklistCategory.food.originTag, equals('[🍲 Food]'));
-      expect(ChecklistCategory.plan.originTag, equals('[📌 Plan]'));
-      expect(ChecklistCategory.task.originTag, equals('[🏷 Task]'));
+      expect(ChecklistCategory.hotel.originTag, equals('Hotel'));
+      expect(ChecklistCategory.food.originTag, equals('Food'));
+      expect(ChecklistCategory.placesToVisit.originTag, equals('Places to Visit'));
+      expect(ChecklistCategory.task.originTag, equals('Task'));
     });
 
     test('TripChecklistItem serialization and deserialization works correctly', () {
@@ -17,7 +17,7 @@ void main() {
         id: 'CHK-TEST-001',
         planId: 'PLAN-HUNZA-001',
         title: 'Visit Baltit Fort',
-        category: ChecklistCategory.plan,
+        category: ChecklistCategory.placesToVisit,
         referenceId: 'REF-001',
         dayNumber: 2,
         dayTitle: 'Day 2: Naran to Hunza',
@@ -30,7 +30,7 @@ void main() {
       expect(map['id'], equals('CHK-TEST-001'));
       expect(map['plan_id'], equals('PLAN-HUNZA-001'));
       expect(map['title'], equals('Visit Baltit Fort'));
-      expect(map['category'], equals('plan'));
+      expect(map['category'], equals('placesToVisit'));
       expect(map['day_number'], equals(2));
       expect(map['is_completed'], equals(0));
 
@@ -38,10 +38,10 @@ void main() {
       expect(deserialized.id, equals(item.id));
       expect(deserialized.planId, equals(item.planId));
       expect(deserialized.title, equals(item.title));
-      expect(deserialized.category, equals(ChecklistCategory.plan));
+      expect(deserialized.category, equals(ChecklistCategory.placesToVisit));
       expect(deserialized.dayNumber, equals(2));
       expect(deserialized.isCompleted, isFalse);
-      expect(deserialized.originTag, equals('[📌 Plan]'));
+      expect(deserialized.originTag, equals('Places to Visit'));
     });
 
     test('TripChecklistItem copyWith toggles completed status cleanly', () {
@@ -56,7 +56,7 @@ void main() {
       final completed = item.copyWith(isCompleted: true);
       expect(completed.isCompleted, isTrue);
       expect(completed.title, equals('Pack warm fleece jacket'));
-      expect(completed.originTag, equals('[🏷 Task]'));
+      expect(completed.originTag, equals('Packing'));
     });
   });
 

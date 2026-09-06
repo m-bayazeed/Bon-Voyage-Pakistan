@@ -14,6 +14,7 @@ from app.api.v1.help import router as help_router
 from app.api.v1.routes import router as routes_router
 from app.api.v1.landmarks import router as landmarks_router
 from app.api.v1.notifications import router as notifications_router
+from app.api.v1.weather import router as weather_router
 from app.core.config import settings
 from app.db.database import init_db
 from app.services.notification_sync_service import notification_sync_service
@@ -170,6 +171,7 @@ app.include_router(help_router, prefix=settings.API_V1_STR)
 app.include_router(routes_router, prefix=settings.API_V1_STR)
 app.include_router(landmarks_router, prefix=settings.API_V1_STR)
 app.include_router(notifications_router, prefix=settings.API_V1_STR)
+app.include_router(weather_router, prefix=settings.API_V1_STR)
 
 
 @app.post(

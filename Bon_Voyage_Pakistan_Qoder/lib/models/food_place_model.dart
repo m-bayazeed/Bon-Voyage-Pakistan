@@ -17,6 +17,7 @@ enum FoodCategory {
   familyDining,
   fineDining,
   vegetarian,
+  italian,
 }
 
 extension FoodCategoryExtension on FoodCategory {
@@ -38,6 +39,8 @@ extension FoodCategoryExtension on FoodCategory {
         return 'Pak-Chinese';
       case FoodCategory.continental:
         return 'Continental & Steaks';
+      case FoodCategory.italian:
+        return 'Italian & Pasta';
       case FoodCategory.traditionalLocal:
         return 'Traditional / Regional';
       case FoodCategory.cafe:
@@ -52,6 +55,43 @@ extension FoodCategoryExtension on FoodCategory {
         return 'Fine Dining';
       case FoodCategory.vegetarian:
         return 'Vegetarian & Daal';
+    }
+  }
+
+  String get cuisineName {
+    switch (this) {
+      case FoodCategory.all:
+        return 'All Cuisines';
+      case FoodCategory.chinese:
+        return 'Chinese';
+      case FoodCategory.continental:
+        return 'Continental';
+      case FoodCategory.italian:
+        return 'Italian';
+      case FoodCategory.bbq:
+        return 'BBQ';
+      case FoodCategory.biryani:
+        return 'Biryani';
+      case FoodCategory.fastFood:
+        return 'Fast Food';
+      case FoodCategory.desiPakistani:
+        return 'Desi';
+      case FoodCategory.streetFood:
+        return 'Street Food';
+      case FoodCategory.traditionalLocal:
+        return 'Traditional';
+      case FoodCategory.cafe:
+        return 'Cafe';
+      case FoodCategory.bakery:
+        return 'Bakery';
+      case FoodCategory.dhaba:
+        return 'Dhaba';
+      case FoodCategory.familyDining:
+        return 'Family Dining';
+      case FoodCategory.fineDining:
+        return 'Fine Dining';
+      case FoodCategory.vegetarian:
+        return 'Vegetarian';
     }
   }
 
@@ -73,6 +113,8 @@ extension FoodCategoryExtension on FoodCategory {
         return Icons.ramen_dining_rounded;
       case FoodCategory.continental:
         return Icons.dinner_dining_rounded;
+      case FoodCategory.italian:
+        return Icons.local_pizza_rounded;
       case FoodCategory.traditionalLocal:
         return Icons.set_meal_rounded;
       case FoodCategory.cafe:
@@ -108,6 +150,8 @@ extension FoodCategoryExtension on FoodCategory {
         return const Color(0xFFD32F2F);
       case FoodCategory.continental:
         return const Color(0xFF512DA8);
+      case FoodCategory.italian:
+        return const Color(0xFFE53935);
       case FoodCategory.traditionalLocal:
         return const Color(0xFF00796B);
       case FoodCategory.cafe:
@@ -299,10 +343,20 @@ class FoodPlace {
   }
 
   factory FoodPlace.fromJson(Map<String, dynamic> json) {
+    final parsedCat = _parseCategory(json['category'] as String?);
+    final rawName = json['name'] as String? ?? 'Pakistani Food Spot';
+    final parsedSpecialties = (json['specialties'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .where((s) => s.trim().isNotEmpty)
+            .toList();
+    final finalSpecialties = (parsedSpecialties != null && parsedSpecialties.isNotEmpty)
+        ? parsedSpecialties
+        : _defaultSpecialties(parsedCat, rawName);
+
     return FoodPlace(
       id: json['id'] as String? ?? 'FOOD-${DateTime.now().millisecondsSinceEpoch}',
-      name: json['name'] as String? ?? 'Pakistani Food Spot',
-      category: _parseCategory(json['category'] as String?),
+      name: rawName,
+      category: parsedCat,
       cuisine: json['cuisine'] as String? ?? 'Desi / Pakistani',
       latitude: (json['latitude'] as num?)?.toDouble() ?? 33.6844,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 73.0479,
@@ -323,10 +377,7 @@ class FoodPlace {
       isOpen: json['isOpen'] as bool? ?? json['is_open'] as bool? ?? true,
       openingHours: json['openingHours'] as String? ?? json['opening_hours'] as String? ?? '12:00 PM - 12:00 AM',
       phone: json['phone'] as String? ?? '+92-51-111-111-111',
-      specialties: (json['specialties'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const ['Special Karahi', 'Hot Naan'],
+      specialties: finalSpecialties,
       description: json['description'] as String? ?? '',
       popularReview: json['popularReview'] as String? ?? json['popular_review'] as String?,
       landmarkNearby: json['landmarkNearby'] as String? ?? json['landmark_nearby'] as String? ?? '',
@@ -383,5 +434,57 @@ class FoodPlace {
       (p) => p.name.toLowerCase() == raw.toLowerCase(),
       orElse: () => FoodPriceTier.moderate,
     );
+  }
+
+  static List<String> _defaultSpecialties(FoodCategory category, String name) {
+    final n = name.toLowerCase();
+    if (n.contains('savour')) return const ['Savour Pulao with Shami Kababs', 'Roast Chicken', 'Shahi Zarda'];
+    if (n.contains('monal')) return const ['Monal Makhani Karahi', 'Dum Pukht', 'Cheese Garlic Naan'];
+    if (n.contains('cheezious')) return const ['Crown Crust Pizza', 'Beast Burger', 'Bihari Rolls'];
+    if (n.contains('kfc')) return const ['Hot & Crispy Chicken', 'Zinger Burger', 'Hot Wings'];
+    if (n.contains('charsi') || n.contains('shinwari')) return const ['Dumba Karahi', 'Mutton Ribs Tikka', 'Peshawari Rosh'];
+    if (n.contains('chaaye khana')) return const ['Doodh Patti Chai', 'Nutella Crepes', 'Club Sandwich'];
+    if (n.contains('tehzeeb') || n.contains('rahat')) return const ['Signature Pizza', 'Chicken Patties', 'Assorted Baklava'];
+
+    if (n.contains('asian wok') || n.contains('ginyaki') || n.contains('dynasty') || n.contains('kim mun') || n.contains('mei kong')) {
+      return const ['Kung Pao Chicken', 'Chicken Manchurian', 'Egg Fried Rice', 'Beef Chili Dry'];
+    }
+    if (n.contains('tuscany') || n.contains('pappasallis') || n.contains('pomodoro') || n.contains('fuoco')) {
+      return const ['Fettuccine Alfredo', 'Wood-Fired Margherita Pizza', 'Mushroom Ravioli', 'Tiramisu'];
+    }
+
+    switch (category) {
+      case FoodCategory.bbq:
+        return const ['Charcoal Seekh Kebabs', 'Chicken Malai Boti', 'Mutton Ribs Tikka'];
+      case FoodCategory.biryani:
+        return const ['Special Chicken Dum Biryani', 'Mutton Pulao Platter', 'Shami Kabab'];
+      case FoodCategory.fastFood:
+        return const ['Gourmet Beef Burger', 'Crispy Zinger Fillet', 'Loaded Cheesy Fries'];
+      case FoodCategory.chinese:
+        return const ['Chicken Manchurian', 'Kung Pao Chicken', 'Egg Fried Rice'];
+      case FoodCategory.continental:
+        return const ['Prime Beef Steak', 'Fettuccine Alfredo', 'Chicken Parmesan'];
+      case FoodCategory.italian:
+        return const ['Fettuccine Alfredo with Chicken', 'Wood-Fired Margherita Pizza', 'Mushroom Ravioli'];
+      case FoodCategory.bakery:
+        return const ['Fresh Chicken Patties', 'Butter Croissants', 'Cream Pastries'];
+      case FoodCategory.cafe:
+        return const ['Specialty Doodh Patti Chai', 'Caramel Macchiato', 'Club Sandwich'];
+      case FoodCategory.dhaba:
+        return const ['Karak Chai', 'Lachha Paratha with Egg', 'Chana Daal Fry'];
+      case FoodCategory.streetFood:
+        return const ['Crispy Gol Gappay', 'Dahi Bhalla Platter', 'Samosa Chaat'];
+      case FoodCategory.traditionalLocal:
+        return const ['Hunza Chapshoro', 'Steamed Mamtu', 'Fresh River Trout'];
+      case FoodCategory.fineDining:
+        return const ['Signature Mutton Handi', 'Charcoal Mixed Grill', 'Kulfi Falooda'];
+      case FoodCategory.familyDining:
+        return const ['Family Chicken Karahi', 'Mutton Seekh Kababs', 'Roghni Naan'];
+      case FoodCategory.vegetarian:
+        return const ['Paneer Makhani Handi', 'Daal Makhani', 'Tandoori Roti'];
+      case FoodCategory.desiPakistani:
+      default:
+        return const ['Chef\'s Special Mutton Handi', 'Desi Chicken Karahi', 'Hot Roghni Naan'];
+    }
   }
 }

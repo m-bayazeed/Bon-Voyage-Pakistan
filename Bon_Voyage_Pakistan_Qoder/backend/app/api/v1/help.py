@@ -107,9 +107,21 @@ async def search_help(req: HelpSearchRequest):
 
     # 5. Apply Type & Query Filter
     filtered_facilities: List[HelpFacilityItem] = []
+    norm_type = (assistance_type or "").lower().replace("_", "").replace(" ", "").strip()
     for f in all_facilities:
         if emergency_only and not f.isEmergency:
             continue
+        if norm_type:
+            if norm_type == "emergency" and not (f.isEmergency or f.type == "emergency"):
+                continue
+            elif norm_type == "pharmacy" and f.type != "pharmacy":
+                continue
+            elif norm_type in ["firstaid", "first_aid"] and f.type != "firstAid":
+                continue
+            elif norm_type in ["government", "govt"] and f.type != "government":
+                continue
+            elif norm_type in ["private", "privatehospital"] and f.type not in ["privateHospital", "private"]:
+                continue
         filtered_facilities.append(f)
 
     if req.search_query and req.search_query.strip():

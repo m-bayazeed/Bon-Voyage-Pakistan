@@ -17,9 +17,9 @@ extension FacilityTypeExtension on FacilityType {
   String get displayName {
     switch (this) {
       case FacilityType.emergency:
-        return 'Emergency (24/7)';
+        return 'Emergency';
       case FacilityType.firstAid:
-        return 'First Aid Station';
+        return 'First Aid';
       case FacilityType.primaryCare:
         return 'Primary Care';
       case FacilityType.secondaryCare:
@@ -27,13 +27,13 @@ extension FacilityTypeExtension on FacilityType {
       case FacilityType.tertiaryCare:
         return 'Tertiary Care';
       case FacilityType.government:
-        return 'Govt Hospital';
+        return 'Govt';
       case FacilityType.privateHospital:
-        return 'Private Hospital';
+        return 'Private';
       case FacilityType.pharmacy:
-        return '24/7 Pharmacy';
+        return 'Pharmacy';
       case FacilityType.clinic:
-        return 'Clinic / Diagnostic';
+        return 'Clinic';
     }
   }
 
@@ -50,7 +50,7 @@ extension FacilityTypeExtension on FacilityType {
       case FacilityType.tertiaryCare:
         return 'Tertiary Care';
       case FacilityType.government:
-        return 'Government';
+        return 'Govt';
       case FacilityType.privateHospital:
         return 'Private';
       case FacilityType.pharmacy:
@@ -75,7 +75,7 @@ extension FacilityTypeExtension on FacilityType {
       case FacilityType.government:
         return Icons.account_balance_rounded;
       case FacilityType.privateHospital:
-        return Icons.medical_services_rounded;
+        return Icons.local_hospital_rounded;
       case FacilityType.pharmacy:
         return Icons.medication_rounded;
       case FacilityType.clinic:
@@ -96,7 +96,7 @@ extension FacilityTypeExtension on FacilityType {
       case FacilityType.tertiaryCare:
         return const Color(0xFF6A1B9A);
       case FacilityType.government:
-        return const Color(0xFF37474F);
+        return const Color(0xFF2E7D32);
       case FacilityType.privateHospital:
         return const Color(0xFF1565C0);
       case FacilityType.pharmacy:
@@ -183,11 +183,18 @@ class MedicalFacility {
 
   factory MedicalFacility.fromMap(Map<String, dynamic> map) {
     FacilityType parseType(String? val) {
-      if (val == null) return FacilityType.primaryCare;
+      if (val == null) return FacilityType.emergency;
+      final v = val.toLowerCase().replaceAll('_', '').replaceAll(' ', '').trim();
+      if (v == 'emergency') return FacilityType.emergency;
+      if (v == 'firstaid') return FacilityType.firstAid;
+      if (v == 'pharmacy') return FacilityType.pharmacy;
+      if (v == 'government' || v == 'govt') return FacilityType.government;
+      if (v == 'privatehospital' || v == 'private') return FacilityType.privateHospital;
+      if (v == 'clinic') return FacilityType.firstAid;
       try {
-        return FacilityType.values.firstWhere((e) => e.name == val);
+        return FacilityType.values.firstWhere((e) => e.name.toLowerCase() == v);
       } catch (_) {
-        return FacilityType.primaryCare;
+        return FacilityType.emergency;
       }
     }
 

@@ -25,7 +25,6 @@ class HotelCard extends StatelessWidget {
 
     final hasImage = hotel.imageUrl != null && hotel.imageUrl!.trim().isNotEmpty;
     final hasRating = hotel.rating != null && hotel.rating! > 0;
-    final hasPrice = hotel.formattedPrice != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -137,31 +136,7 @@ class HotelCard extends StatelessWidget {
                     ),
                   ),
 
-                  // Top Right: Price Badge (if available)
-                  if (hasPrice)
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.75),
-                          borderRadius: BorderRadius.circular(12),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.2)),
-                        ),
-                        child: Text(
-                          hotel.formattedPrice!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                    ),
+
 
                   // Bottom Left on Image: Rating & Distance
                   Positioned(

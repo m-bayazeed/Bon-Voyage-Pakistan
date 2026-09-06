@@ -462,14 +462,29 @@ def hotels_cities_route():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/v1/hotels/search", methods=["POST"])
+@app.route("/api/v1/hotels/search", methods=["GET", "POST"])
 def hotels_search_route():
-    """Flask endpoint for hotel search with Geoapify and Gemini."""
+    """Flask endpoint for hotel search supporting GET and POST with query params."""
     import asyncio
     from app.models.hotel import HotelSearchRequest
     from app.api.v1.hotels import search_hotels
 
-    data = request.get_json() or {}
+    if request.method == "GET":
+        data = request.args.to_dict()
+    else:
+        data = request.get_json() or {}
+        for k, v in request.args.items():
+            if k not in data:
+                data[k] = v
+
+    # Parse numeric query params if present
+    for num_field in ["latitude", "longitude", "user_latitude", "user_longitude", "radius_km"]:
+        if num_field in data and data[num_field] is not None:
+            try:
+                data[num_field] = float(data[num_field])
+            except (ValueError, TypeError):
+                data[num_field] = None
+
     try:
         req = HotelSearchRequest(**data)
         result = asyncio.run(search_hotels(req))
@@ -513,21 +528,51 @@ def hotels_resolve_location_route():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/v1/food/search", methods=["POST"])
+@app.route("/api/v1/food/search", methods=["GET", "POST"])
 def food_search_route():
     """Flask endpoint for live food & dining search via Google Places (New)."""
     import asyncio
     from app.models.food import FoodSearchRequest
     from app.api.v1.food import search_food
 
-    data = request.get_json() or {}
+    # Combine query arguments and JSON body
+    combined_data = dict(request.args)
+    if request.is_json:
+        body = request.get_json() or {}
+        combined_data.update(body)
+
+    cuisine_param = request.args.get("cuisine") or combined_data.get("cuisine")
+    category_param = request.args.get("category") or combined_data.get("category")
+    city_param = request.args.get("city") or combined_data.get("city")
+
     try:
-        req = FoodSearchRequest(**data)
-        result = asyncio.run(search_food(req))
+        req = FoodSearchRequest(**combined_data)
+        result = asyncio.run(search_food(req=req, cuisine=cuisine_param, category=category_param, city=city_param))
         return jsonify(result.model_dump()), 200
     except Exception as e:
         app.logger.error(f"Food search error: {e}")
         return jsonify({"success": False, "error": str(e), "places": []}), 500
+
+
+@app.route("/api/v1/weather/current", methods=["GET"])
+def weather_current_route():
+    """Flask endpoint for live weather & situational road travel conditions via OpenWeatherMap."""
+    import asyncio
+    from app.services.weather_service import weather_service
+
+    city = request.args.get("city")
+    lat_str = request.args.get("lat") or request.args.get("latitude")
+    lon_str = request.args.get("lon") or request.args.get("longitude")
+
+    lat = float(lat_str) if lat_str else None
+    lon = float(lon_str) if lon_str else None
+
+    try:
+        result = asyncio.run(weather_service.get_current_weather(city=city, lat=lat, lon=lon))
+        return jsonify(result.model_dump()), 200
+    except Exception as e:
+        app.logger.error(f"Weather route error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/v1/help/search", methods=["POST"])

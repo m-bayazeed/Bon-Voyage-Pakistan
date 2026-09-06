@@ -125,21 +125,34 @@ class TranslationPipelineService:
                 temp_path = Path(tmp_file.name)
 
             # 4. Transcribe via Groq Whisper with real file bytes
+            whisper_detected_lang = None
             try:
                 groq_client = groq_service._get_client()
                 with open(str(temp_path), "rb") as f:
                     transcription = await groq_client.audio.transcriptions.create(
                         file=(os.path.basename(str(temp_path)), f.read()),
                         model=settings.GROQ_WHISPER_MODEL,
-                        response_format="json",
+                        response_format="verbose_json",
                     )
-                raw_transcript = (transcription.text or "").strip()
+                raw_transcript = (getattr(transcription, "text", "") or "").strip()
+                whisper_detected_lang = getattr(transcription, "language", None)
             except Exception as e:
-                logger.error(f"Groq transcription failed: {e}")
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Speech recognition service error: {str(e)}",
-                )
+                logger.warning(f"Groq verbose transcription notice: {e}, attempting json fallback...")
+                try:
+                    groq_client = groq_service._get_client()
+                    with open(str(temp_path), "rb") as f:
+                        transcription = await groq_client.audio.transcriptions.create(
+                            file=(os.path.basename(str(temp_path)), f.read()),
+                            model=settings.GROQ_WHISPER_MODEL,
+                            response_format="json",
+                        )
+                    raw_transcript = (getattr(transcription, "text", "") or "").strip()
+                except Exception as inner_e:
+                    logger.error(f"Groq transcription failed: {inner_e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Speech recognition service error: {str(inner_e)}",
+                    )
 
             # Validate speech detection
             if not raw_transcript:
@@ -175,9 +188,19 @@ class TranslationPipelineService:
 
             target_lang_display = settings.LANGUAGE_NAMES.get(target_language, "Urdu" if target_language == "ur" else "English")
 
+            # Determine clean detected language name
+            detected_lang = gemini_result.detected_source_language or ""
+            if not detected_lang or detected_lang.lower() in ["auto", "auto-detected language", "unknown", ""]:
+                if any("\u0600" <= c <= "\u06FF" for c in raw_transcript):
+                    detected_lang = "Urdu"
+                elif whisper_detected_lang:
+                    detected_lang = whisper_detected_lang.capitalize()
+                else:
+                    detected_lang = "English"
+
             return VoiceTranslateResponse(
                 success=True,
-                detected_source_language=gemini_result.detected_source_language,
+                detected_source_language=detected_lang,
                 original_text=raw_transcript,
                 transcript=raw_transcript,
                 source_romanized_pronunciation=gemini_result.source_romanized_pronunciation or "",

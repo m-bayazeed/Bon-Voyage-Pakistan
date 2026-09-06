@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 /// Central API configuration for Bon Voyage Pakistan.
 ///
 /// Can be configured dynamically via:
@@ -27,10 +25,9 @@ class ApiConfig {
   }
 
   /// Candidate host list for multi-target fallback:
-  /// 1. Configured Host / Wi-Fi IP (via --dart-define)
-  /// 2. 127.0.0.1 (Works for USB ADB Reverse, Desktop, iOS Simulator, Web)
+  /// 1. 127.0.0.1 (Fast-path for USB ADB Reverse, Desktop, iOS Simulator, Web)
+  /// 2. Configured Host / Wi-Fi IP (via --dart-define=WIFI_IP=... or BACKEND_HOST=...)
   /// 3. 10.0.2.2 (Works for Android Emulator)
-  /// 4. Common Local LAN fallback IPs
   static List<String> get candidateHosts {
     final list = <String>[];
     void addHost(String h) {
@@ -40,14 +37,17 @@ class ApiConfig {
       }
     }
 
-    if (_envHost.isNotEmpty) {
+    // 1. Fast-path for USB (adb reverse) & local machine
+    addHost('127.0.0.1');
+
+    // 2. Configured Host / Wi-Fi IP
+    if (_envHost.isNotEmpty && _envHost != '127.0.0.1') {
       addHost(_envHost);
     }
-    addHost('127.0.0.1');
+
+    // 3. Android Emulator fallback
     addHost('10.0.2.2');
-    if (_envHost.isEmpty) {
-      addHost('192.168.100.12');
-    }
+
     return list;
   }
 

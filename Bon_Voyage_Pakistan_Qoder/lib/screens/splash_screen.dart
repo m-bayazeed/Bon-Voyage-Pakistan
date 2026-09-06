@@ -124,21 +124,28 @@ class _SplashScreenState extends State<SplashScreen>
                     width: 140,
                     height: 140,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(24),
                       color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-                      border: Border.all(color: AppTheme.primary.withOpacity(0.4), width: 2),
+                      border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.4),
+                        width: 2,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.primary.withOpacity(0.18),
+                          color: AppTheme.primary.withValues(alpha: 0.18),
                           blurRadius: 40,
                           spreadRadius: 4,
                         ),
                       ],
                     ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        fit: BoxFit.cover,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
+                        ),
                       ),
                     ),
                   ),
@@ -164,7 +171,7 @@ class _SplashScreenState extends State<SplashScreen>
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w300,
-                      color: onBg.withOpacity(0.8),
+                      color: onBg.withValues(alpha: 0.8),
                       letterSpacing: 10,
                     ),
                   ),

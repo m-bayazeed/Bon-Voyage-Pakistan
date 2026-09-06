@@ -12,6 +12,7 @@ class LandmarkResponse(BaseModel):
     historical_era: Optional[str] = Field(default=None, description="Historical period or dynasty (e.g. Mughal era, Indus Valley Civilization)")
     history_overview: Optional[str] = Field(default=None, description="Concise historical background of the landmark")
     historical_events: List[str] = Field(default_factory=list, description="Important historical events associated with the site")
+    things_to_do: List[str] = Field(default_factory=list, description="Top visitor activities and things to do")
     interesting_facts: List[str] = Field(default_factory=list, description="Curated fascinating facts about the landmark")
     architectural_significance: Optional[str] = Field(default=None, description="Architectural design and cultural significance")
     travel_tip: Optional[str] = Field(default=None, description="Practical travel/visitor tip")

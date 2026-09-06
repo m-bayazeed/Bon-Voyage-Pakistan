@@ -130,6 +130,9 @@ Do NOT include markdown fences, code blocks, or extra text."""
                             break
                 except Exception as e:
                     logger.warning(f"[HotelEnrichment] Gemini model {model_name} error/timeout: {e}")
+                    if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e) or "Quota exceeded" in str(e):
+                        logger.info("[HotelEnrichment] Gemini quota exhausted, skipping to fallback.")
+                        break
 
         # Fallback to Groq if Gemini failed
         if not enriched_data:

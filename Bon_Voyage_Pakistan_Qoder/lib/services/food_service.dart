@@ -15,6 +15,7 @@ abstract class FoodDataProvider {
     double? searchLat,
     double? searchLng,
     FoodCategory? category,
+    String? cuisine,
     String? query,
     FoodSortOption sortOption = FoodSortOption.rating,
   });
@@ -52,6 +53,7 @@ class BackendFoodDataProvider implements FoodDataProvider {
     double? searchLat,
     double? searchLng,
     FoodCategory? category,
+    String? cuisine,
     String? query,
     FoodSortOption sortOption = FoodSortOption.rating,
   }) async {
@@ -99,15 +101,48 @@ class BackendFoodDataProvider implements FoodDataProvider {
     final catKey = category == null || category == FoodCategory.all ? 'all' : category.name;
     final sortKey = sortOption.name;
 
-    final payload = {
+    // Resolve effective cuisine: prioritize explicitly passed cuisine or category.cuisineName
+    String? effectiveCuisine = cuisine?.trim();
+    if (effectiveCuisine == null || effectiveCuisine.isEmpty || effectiveCuisine.toLowerCase() == 'all cuisines') {
+      if (category != null && category != FoodCategory.all) {
+        effectiveCuisine = category.cuisineName;
+      } else {
+        effectiveCuisine = null;
+      }
+    }
+
+    final queryParams = <String, String>{
       'city': locationName,
       'location_name': locationName,
+      'latitude': centerLat.toString(),
+      'longitude': centerLon.toString(),
+      'radius_km': '30.0',
+      'category': catKey,
+      'sort_by': sortKey,
+    };
+    if (effectiveCuisine != null &&
+        effectiveCuisine.isNotEmpty &&
+        effectiveCuisine.toLowerCase() != 'all' &&
+        effectiveCuisine.toLowerCase() != 'all cuisines') {
+      queryParams['cuisine'] = effectiveCuisine;
+    }
+    if (query != null && query.trim().isNotEmpty) {
+      queryParams['search_query'] = query.trim();
+    }
+    if (gpsOriginLat != null && gpsOriginLon != null) {
+      queryParams['user_latitude'] = gpsOriginLat.toString();
+      queryParams['user_longitude'] = gpsOriginLon.toString();
+    }
+
+    final payload = {
+      ...queryParams,
       'latitude': centerLat,
       'longitude': centerLon,
       'user_latitude': gpsOriginLat,
       'user_longitude': gpsOriginLon,
       'radius_km': 30.0,
       'category': catKey,
+      'cuisine': effectiveCuisine,
       'sort_by': sortKey,
       'search_query': query,
     };
@@ -116,7 +151,7 @@ class BackendFoodDataProvider implements FoodDataProvider {
     debugPrint('Location: $locationName');
     debugPrint('Search Center: $centerLat, $centerLon (Radius: 30 km)');
     debugPrint('User Device GPS: $gpsOriginLat, $gpsOriginLon');
-    debugPrint('Category: $catKey | Sort: $sortKey');
+    debugPrint('Category: $catKey | Cuisine: $effectiveCuisine | Sort: $sortKey');
     debugPrint('========================================================\n');
 
     final candidateHosts = List<String>.from(ApiConfig.candidateHosts);
@@ -133,16 +168,18 @@ class BackendFoodDataProvider implements FoodDataProvider {
 
     for (final host in candidateHosts) {
       for (final port in ports) {
-        final url = Uri.parse('http://$host:$port/api/v1/food/search');
+        final uri = Uri.http('$host:$port', '/api/v1/food/search', queryParams);
+        // Explicit required debug logging
+        print('[FoodService] Request URL: $uri');
         try {
-          debugPrint('[Food] POST $url (Payload: $payload)...');
+          debugPrint('[Food] POST $uri (Payload: $payload)...');
           final response = await http
               .post(
-                url,
+                uri,
                 headers: {'Content-Type': 'application/json'},
                 body: jsonEncode(payload),
               )
-              .timeout(const Duration(seconds: 4));
+              .timeout(const Duration(seconds: 8));
 
           if (response.statusCode == 200) {
             final data = jsonDecode(response.body);
@@ -150,9 +187,35 @@ class BackendFoodDataProvider implements FoodDataProvider {
               _cachedWorkingHost = host;
               _cachedWorkingPort = port;
               final rawPlaces = data['places'] as List<dynamic>? ?? [];
-              final places = rawPlaces
+              var places = rawPlaces
                   .map((item) => FoodPlace.fromJson(item as Map<String, dynamic>))
                   .toList();
+
+              // Client-Side Guard / Resiliency:
+              // If user selected a distinct cuisine or category, confirm rendered list
+              // only contains items whose cuisine, category, name, or specialties match the requested keyword.
+              if (effectiveCuisine != null &&
+                  effectiveCuisine.isNotEmpty &&
+                  effectiveCuisine.toLowerCase() != 'all' &&
+                  effectiveCuisine.toLowerCase() != 'all cuisines') {
+                final cNorm = effectiveCuisine.toLowerCase().trim();
+                places = places.where((p) {
+                  final matchesCuisine = p.cuisine.toLowerCase().contains(cNorm);
+                  final matchesCat = p.category.name.toLowerCase().contains(cNorm);
+                  final matchesName = p.name.toLowerCase().contains(cNorm);
+                  final matchesSpecialties = p.specialties.any((s) => s.toLowerCase().contains(cNorm));
+                  return matchesCuisine || matchesCat || matchesName || matchesSpecialties;
+                }).toList();
+              } else if (category != null && category != FoodCategory.all) {
+                final catNorm = category.name.toLowerCase().trim();
+                places = places.where((p) {
+                  final matchesCat = p.category == category || p.category.name.toLowerCase() == catNorm;
+                  final matchesCuisine = p.cuisine.toLowerCase().contains(catNorm);
+                  final matchesName = p.name.toLowerCase().contains(catNorm);
+                  final matchesSpecialties = p.specialties.any((s) => s.toLowerCase().contains(catNorm));
+                  return matchesCat || matchesCuisine || matchesName || matchesSpecialties;
+                }).toList();
+              }
 
               debugPrint('[Food] Live API returned ${places.length} places for $locationName from $host:$port');
               return places;
@@ -186,6 +249,7 @@ class FoodService {
     String? city,
     bool useCurrentLocation = false,
     FoodCategory category = FoodCategory.all,
+    String? cuisine,
     FoodSortOption sortOption = FoodSortOption.rating,
     String? query,
     double? userLat,
@@ -194,7 +258,8 @@ class FoodService {
     double? searchLng,
   }) async {
     try {
-      debugPrint('FOOD SEARCH STARTED: city=$city, useGPS=$useCurrentLocation, category=${category.name}');
+      final effectiveCuisine = cuisine ?? (category != FoodCategory.all ? category.cuisineName : null);
+      debugPrint('FOOD SEARCH STARTED: city=$city, useGPS=$useCurrentLocation, category=${category.name}, cuisine=$effectiveCuisine');
 
       double? currentDeviceLat = userLat;
       double? currentDeviceLng = userLng;
@@ -217,6 +282,7 @@ class FoodService {
         searchLat: searchLat,
         searchLng: searchLng,
         category: category,
+        cuisine: effectiveCuisine,
         query: query,
         sortOption: sortOption,
       );

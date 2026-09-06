@@ -21,7 +21,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.8,
         "reviews_count": 5200,
         "price_per_night_pkr": 65000,
-        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
         "description": "Premier 5-star heritage luxury hotel surrounded by lush gardens beside Rawal Lake and the Margalla Hills.",
         "highlight": "5-Star Heritage Luxury",
         "amenities": ["Free High-Speed Wi-Fi", "Swimming Pool", "Spa & Wellness Center", "Fine Dining Restaurant", "Complimentary Breakfast", "Free Secure Parking"],
@@ -42,7 +42,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.6,
         "reviews_count": 4800,
         "price_per_night_pkr": 52000,
-        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
         "description": "Distinguished luxury hotel situated in the heart of Islamabad near diplomatic enclave and Margalla trails.",
         "highlight": "Diplomatic Enclave Luxury",
         "amenities": ["Free High-Speed Wi-Fi", "Swimming Pool", "Spa & Wellness Center", "Fine Dining Restaurant", "Complimentary Breakfast", "24/7 Room Service"],
@@ -84,7 +84,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.5,
         "reviews_count": 2100,
         "price_per_night_pkr": 32000,
-        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80",
         "description": "Perched high on the Margalla ridge with panoramic sunset views over Islamabad valley.",
         "highlight": "Panoramic Margalla Ridge",
         "amenities": ["Mountain / Valley View", "Fine Dining Restaurant", "Evening Bonfire Area", "Free Secure Parking", "Free High-Speed Wi-Fi"],
@@ -105,7 +105,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.6,
         "reviews_count": 1400,
         "price_per_night_pkr": 36000,
-        "image_url": "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80",
         "description": "Exclusive alpine villas nestled inside dense pine forests overlooking misty valley gorges.",
         "highlight": "Pine Forest Serenity",
         "amenities": ["Pine Forest View", "Private Balconies", "Bonfire Pits", "Fine Dining", "Free Wi-Fi"],
@@ -147,7 +147,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.2,
         "reviews_count": 1850,
         "price_per_night_pkr": 14500,
-        "image_url": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=1200&q=80",
         "description": "Comfortable corporate & family boutique hotel strategically located in the commercial heart of Islamabad.",
         "highlight": "Blue Area Commercial Hub",
         "amenities": ["City Center Access", "Complimentary Breakfast", "Free Wi-Fi", "Airport Shuttle Available"],
@@ -168,7 +168,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.3,
         "reviews_count": 2200,
         "price_per_night_pkr": 16500,
-        "image_url": "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
         "description": "Established executive hotel near the Convention Centre with landscaped gardens and multi-cuisine restaurant.",
         "highlight": "Convention Center Vicinity",
         "amenities": ["Garden Lawn", "Conference Facilities", "Free Wi-Fi", "Complimentary Breakfast"],
@@ -319,7 +319,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.5,
         "reviews_count": 3400,
         "price_per_night_pkr": 28000,
-        "image_url": "https://images.unsplash.com/photo-1568084680786-a84f91d1153c?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80",
         "description": "Dating to 1880, this colonial heritage jewel features suites once occupied by historical luminaries.",
         "highlight": "1880 Historic Heritage",
         "amenities": ["Colonial High Tea Lawn", "Historic Heritage Suites", "Fine Dining", "Free High-Speed Wi-Fi"],
@@ -361,7 +361,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.5,
         "reviews_count": 1900,
         "price_per_night_pkr": 24000,
-        "image_url": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80",
         "description": "Spacious luxury residential suites with private kitchens and executive services near MM Alam Road.",
         "highlight": "MM Alam Fashion District",
         "amenities": ["Full Suite Kitchenette", "Gym & Sauna", "Free Wi-Fi", "Complimentary Breakfast"],
@@ -403,7 +403,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.3,
         "reviews_count": 1650,
         "price_per_night_pkr": 16000,
-        "image_url": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1568084680786-a84f91d1153c?auto=format&fit=crop&w=1200&q=80",
         "description": "Stylish hotel right on MM Alam dining strip, offering comfortable modern rooms and quick airport link.",
         "highlight": "Dining District Heart",
         "amenities": ["Rooftop Restaurant", "Free Wi-Fi", "Complimentary Breakfast", "Airport Shuttle"],
@@ -470,7 +470,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.6,
         "reviews_count": 5600,
         "price_per_night_pkr": 46000,
-        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
         "description": "Prestigious 5-star hotel in Karachi's consular district featuring outdoor pool, luxury spa, and Chinese bistro.",
         "highlight": "Consular District 5-Star",
         "amenities": ["Outdoor Swimming Pool", "Spa & Wellness Center", "Executive Lounge", "Free High-Speed Wi-Fi", "Complimentary Breakfast"],
@@ -491,7 +491,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.5,
         "reviews_count": 4900,
         "price_per_night_pkr": 44000,
-        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
         "description": "Landmark Karachi hotel boasting legendary dining outlets, outdoor pool, and executive ballroom suites.",
         "highlight": "Flagship Commercial Hub",
         "amenities": ["Outdoor Pool", "Multiple Fine Dining Restaurants", "Health Club", "Free Valet Parking", "Free Wi-Fi"],
@@ -533,7 +533,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.3,
         "reviews_count": 3200,
         "price_per_night_pkr": 21000,
-        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
         "description": "Waterfront resort hotel surrounded by mangrove creeks, lush coconut palms, and open-air seaside dining.",
         "highlight": "Mangrove Creek Waterfront",
         "amenities": ["Seaside Creek View", "Outdoor Pool", "Open-Air Lawn Dining", "Free Wi-Fi"],
@@ -554,7 +554,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.7,
         "reviews_count": 820,
         "price_per_night_pkr": 22000,
-        "image_url": "https://images.unsplash.com/photo-1510312305653-8ed496efae75?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?auto=format&fit=crop&w=1200&q=80",
         "description": "Exclusive beachfront glamping huts on golden sands with private sundecks, beach bonfires, and turtle watching.",
         "highlight": "Arabian Sea Beachfront",
         "amenities": ["Direct Beach Access", "Private Sundeck", "Seafood BBQ Bonfire", "Turtle Watching Tours"],
@@ -642,7 +642,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.9,
         "reviews_count": 2800,
         "price_per_night_pkr": 62000,
-        "image_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80",
         "description": "Superb 5-star mountain sanctuary with floor-to-ceiling glass balconies overlooking the turquoise Attabad Lake.",
         "highlight": "Turquoise Lakefront Glaze",
         "amenities": ["Mountain / Valley View", "Fine Dining Restaurant", "Evening Bonfire Area", "Complimentary Breakfast", "Jeep & Tour Desk", "Free High-Speed Wi-Fi"],
@@ -663,7 +663,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.8,
         "reviews_count": 3100,
         "price_per_night_pkr": 48000,
-        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80",
         "description": "Authentic Hunza architecture surrounded by apricot orchards facing the majestic Rakaposhi and Ultar Sar peaks.",
         "highlight": "Rakaposhi Glacier Panorama",
         "amenities": ["Mountain / Valley View", "Fine Dining Restaurant", "Complimentary Breakfast", "Evening Bonfire Area", "Jeep & Tour Desk"],
@@ -684,7 +684,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.7,
         "reviews_count": 2100,
         "price_per_night_pkr": 32000,
-        "image_url": "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?auto=format&fit=crop&w=1200&q=80",
         "description": "Situated at the highest viewpoint in Hunza, providing breathtaking 360-degree vistas of 8 mountain peaks.",
         "highlight": "Highest Viewpoint in Hunza",
         "amenities": ["360 Mountain Views", "Rooftop Restaurant", "Campfire Nights", "Free Wi-Fi"],
@@ -772,7 +772,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.8,
         "reviews_count": 3600,
         "price_per_night_pkr": 48000,
-        "image_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80",
         "description": "Legendary 'Heaven on Earth' resort surrounding the heart-shaped Kachura Lake with pagodas and flower gardens.",
         "highlight": "Heart-Shaped Kachura Lake",
         "amenities": ["Mountain / Valley View", "Fine Dining Restaurant", "Complimentary Breakfast", "Jeep & Tour Desk", "Free High-Speed Wi-Fi", "Free Secure Parking"],
@@ -793,7 +793,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.9,
         "reviews_count": 2900,
         "price_per_night_pkr": 56000,
-        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80",
         "description": "400-year-old Raja palace restored into an exquisite 5-star living museum hotel with historic royal gardens.",
         "highlight": "400-Yr Royal Fort Heritage",
         "amenities": ["Mountain / Valley View", "Fine Dining Restaurant", "Complimentary Breakfast", "Historic Royal Museum", "Free Secure Parking"],
@@ -856,7 +856,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.4,
         "reviews_count": 1300,
         "price_per_night_pkr": 16000,
-        "image_url": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
         "description": "Modern comfort hotel with heated rooms, buffet restaurant, and direct transit to Deosai Plains.",
         "highlight": "Gateway to Deosai Plains",
         "amenities": ["Central Heating", "Buffet Dining", "Jeep Hire Desk", "Free Wi-Fi"],
@@ -877,12 +877,99 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.2,
         "reviews_count": 780,
         "price_per_night_pkr": 7500,
-        "image_url": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&w=1200&q=80",
         "description": "Affordable alpine mountaineer stopover with warm hot water, clean beds, and local Balti meals.",
         "highlight": "Mountaineer Waypoint",
         "amenities": ["Hot Water 24/7", "Local Balti Food", "Free Wi-Fi", "Tour Assistance"],
         "website": "https://baltistancontinental.pk",
         "phone": "+92 5815 452233",
+    },
+    # ─────────────────────────────────────────────────────────────────────────
+    # ── GILGIT (4 Verified Stays) ──
+    # ─────────────────────────────────────────────────────────────────────────
+    {
+        "id": "fallback_glt_serena",
+        "name": "Gilgit Serena Hotel",
+        "category": "luxury",
+        "badge_label": "4-Star Luxury",
+        "latitude": 35.9185,
+        "longitude": 74.3160,
+        "city": "Gilgit",
+        "short_address": "Sherullah Baig Road, Jutial",
+        "full_address": "Sherullah Baig Rd, Jutial, Gilgit, 15100",
+        "address": "Jutial, Gilgit",
+        "rating": 4.6,
+        "reviews_count": 1800,
+        "price_per_night_pkr": 38000,
+        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "description": "Surrounded by landscaped gardens with breathtaking views of Mount Rakaposhi and the Gilgit River.",
+        "highlight": "Jutial Valley Sanctuary",
+        "amenities": ["Mountain View", "Fine Dining", "Free Wi-Fi", "Free Secure Parking", "Airport Shuttle"],
+        "website": "https://www.serenahotels.com/gilgit",
+        "phone": "+92 5811 455894",
+    },
+    {
+        "id": "fallback_glt_riveria",
+        "name": "Riveria Hotel Gilgit",
+        "category": "boutique",
+        "badge_label": "Riverside Boutique",
+        "latitude": 35.9220,
+        "longitude": 74.3100,
+        "city": "Gilgit",
+        "short_address": "River Road, Gilgit City",
+        "full_address": "River Road, near City Bridge, Gilgit",
+        "address": "River Road, Gilgit",
+        "rating": 4.3,
+        "reviews_count": 920,
+        "price_per_night_pkr": 18000,
+        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
+        "description": "Riverside stay offering uninterrupted vistas of the roaring Gilgit River and surrounding snow-capped peaks.",
+        "highlight": "Gilgit River Vistas",
+        "amenities": ["River View", "Terrace Restaurant", "Free Wi-Fi", "Car Rental Desk"],
+        "website": "https://riveriahotel.pk",
+        "phone": "+92 5811 452200",
+    },
+    {
+        "id": "fallback_glt_park",
+        "name": "Park Hotel Gilgit",
+        "category": "budget",
+        "badge_label": "City Center Comfort",
+        "latitude": 35.9250,
+        "longitude": 74.3080,
+        "city": "Gilgit",
+        "short_address": "Airport Road, Gilgit",
+        "full_address": "Airport Road, Gilgit Town",
+        "address": "Airport Road, Gilgit",
+        "rating": 4.1,
+        "reviews_count": 650,
+        "price_per_night_pkr": 9000,
+        "image_url": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&w=1200&q=80",
+        "description": "Centrally located comfortable city lodge, minutes away from Gilgit Airport and old bazaars.",
+        "highlight": "Proximity to Gilgit Airport",
+        "amenities": ["24/7 Front Desk", "Free Wi-Fi", "Hot Water", "Complimentary Tea"],
+        "website": "https://parkhotelgilgit.pk",
+        "phone": "+92 5811 452414",
+    },
+    {
+        "id": "fallback_glt_continental",
+        "name": "Gilgit Continental Hotel",
+        "category": "budget",
+        "badge_label": "Alpine Economy",
+        "latitude": 35.9190,
+        "longitude": 74.3210,
+        "city": "Gilgit",
+        "short_address": "Karakoram Highway Bypass, Jutial",
+        "full_address": "KKH Bypass, Jutial, Gilgit",
+        "address": "KKH Bypass, Jutial, Gilgit",
+        "rating": 4.0,
+        "reviews_count": 480,
+        "price_per_night_pkr": 7500,
+        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "description": "Convenient road trip base located along KKH with mountain views, clean rooms, and traditional dining.",
+        "highlight": "KKH Road Trip Waypoint",
+        "amenities": ["KKH Road Access", "Free Parking", "Restaurant", "Hot Water"],
+        "website": "https://gilgitcontinental.pk",
+        "phone": "+92 5811 454321",
     },
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -902,7 +989,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.8,
         "reviews_count": 3400,
         "price_per_night_pkr": 54000,
-        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1551524559-8af4e6624178?auto=format&fit=crop&w=1200&q=80",
         "description": "Pakistan's premier ski resort hotel with chairlift access, panoramic snow peak views, and heated indoor amenities.",
         "highlight": "Pakistan Premier Ski Resort",
         "amenities": ["Ski & Chairlift Access", "Heated Indoor Lounge", "Fine Dining", "Spa", "Free Wi-Fi"],
@@ -923,7 +1010,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.7,
         "reviews_count": 2200,
         "price_per_night_pkr": 42000,
-        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
         "description": "Colonial elegance with manicured rose gardens and historic royal suites in the valley of Swat.",
         "highlight": "Royal Swat Estate",
         "amenities": ["Free High-Speed Wi-Fi", "Swimming Pool", "Fine Dining Restaurant", "Complimentary Breakfast", "Free Secure Parking"],
@@ -944,7 +1031,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.8,
         "reviews_count": 1400,
         "price_per_night_pkr": 38000,
-        "image_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1200&q=80",
         "description": "Swiss-chalet style cedarwood resort surrounded by ancient walnut trees and crystalline river rapids.",
         "highlight": "Cedar Chalet by Ushu River",
         "amenities": ["Mountain / Valley View", "Fine Dining Restaurant", "Evening Bonfire Area", "Complimentary Breakfast", "Jeep & Tour Desk"],
@@ -986,7 +1073,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.4,
         "reviews_count": 1800,
         "price_per_night_pkr": 16500,
-        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80",
         "description": "Perched on a cliff overlooking the roaring Swat River with open-air terrace dining and adventure tours.",
         "highlight": "Fizagat Cliffside Panorama",
         "amenities": ["River & Valley View", "Open-Air Restaurant", "Free Wi-Fi", "Free Parking"],
@@ -1032,7 +1119,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.7,
         "reviews_count": 6200,
         "price_per_night_pkr": 56000,
-        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?auto=format&fit=crop&w=1200&q=80",
         "description": "World-famous 5-star mountain resort perched on cliffside terraces with golf course and Kashmir views.",
         "highlight": "Cliffside Bhurban Golf Resort",
         "amenities": ["Mountain / Valley View", "Swimming Pool", "Spa & Wellness Center", "Fine Dining Restaurant", "Complimentary Breakfast", "Free Secure Parking"],
@@ -1053,7 +1140,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.4,
         "reviews_count": 1600,
         "price_per_night_pkr": 19000,
-        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80",
         "description": "Cozy alpine pine resort with children's play areas, lawn bonfires, and direct access to Mall Road.",
         "highlight": "Alpine Pine Grove",
         "amenities": ["Mountain / Valley View", "Complimentary Breakfast", "Evening Bonfire Area", "Free Secure Parking", "Central Heating & AC"],
@@ -1074,7 +1161,7 @@ CURATED_HOTELS_DB: List[Dict] = [
         "rating": 4.5,
         "reviews_count": 2100,
         "price_per_night_pkr": 24000,
-        "image_url": "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80",
+        "image_url": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80",
         "description": "Historic boutique hotel dating to 1880 with vintage wooden fireplaces, British colonial architecture, and high tea.",
         "highlight": "Colonial Fireplace Lodge",
         "amenities": ["Wood Fireplaces", "Colonial Dining", "Free Wi-Fi", "Free Breakfast"],
@@ -1123,6 +1210,220 @@ CURATED_HOTELS_DB: List[Dict] = [
         "website": "https://brightlandshotel.pk",
         "phone": "+92 51 3410280",
     },
+    {
+        "id": "fallback_mre_fiora",
+        "name": "Fiora Hotel Murree",
+        "category": "luxury",
+        "badge_label": "5-Star Mountain Luxury",
+        "latitude": 33.9074,
+        "longitude": 73.4016,
+        "city": "Murree",
+        "short_address": "Viewforth Road, Murree",
+        "full_address": "Viewforth Rd, near Pindi Point, Murree, Punjab 47150",
+        "address": "Viewforth Rd, Murree",
+        "rating": 4.6,
+        "reviews_count": 890,
+        "price_per_night_pkr": 38000,
+        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "description": "Premier luxury mountain hotel near Viewforth and Pindi Point with heated rooms, glass-front dining, and panoramic valley views.",
+        "highlight": "Panoramic Pindi Point Mountain Luxury",
+        "amenities": ["Mountain / Valley View", "Central Heating", "Fine Dining Restaurant", "Free High-Speed Wi-Fi", "Free Secure Parking"],
+        "website": "https://fiorahotels.com",
+        "phone": "+92 51 3751234",
+    },
+    {
+        "id": "fallback_mre_cecil",
+        "name": "Cecil by Pearl Continental Murree",
+        "category": "boutique",
+        "badge_label": "Colonial Mountain Heritage",
+        "latitude": 33.9073,
+        "longitude": 73.3897,
+        "city": "Murree",
+        "short_address": "Mount View Road, Murree",
+        "full_address": "Mount View Road, Cecil Apartments, Murree, Punjab",
+        "address": "Mount View Rd, Murree",
+        "rating": 4.7,
+        "reviews_count": 1400,
+        "price_per_night_pkr": 42000,
+        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "description": "Historic 1851 colonial landmark lovingly restored by PC Hotels, offering timeless wooden fireplaces and crisp pine air.",
+        "highlight": "Historic 1851 British Colonial Heritage",
+        "amenities": ["Historic Heritage", "Fireplace Lounges", "Pine Garden", "Fine Dining", "Free Wi-Fi"],
+        "website": "https://www.pchotels.com/cecil-murree",
+        "phone": "+92 51 3410247",
+    },
+    {
+        "id": "fallback_mre_ramada_topa",
+        "name": "Ramada by Wyndham Murree Lower Topa Resort",
+        "category": "resort",
+        "badge_label": "Pine Forest Resort",
+        "latitude": 33.8882,
+        "longitude": 73.4312,
+        "city": "Murree",
+        "short_address": "Islamabad-Murree Expy, Lower Topa",
+        "full_address": "Islamabad-Murree Expressway, Lower Topa, Murree, Punjab",
+        "address": "Lower Topa, Murree Expressway",
+        "rating": 4.5,
+        "reviews_count": 1100,
+        "price_per_night_pkr": 36000,
+        "image_url": "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80",
+        "description": "Upscale alpine mountain resort surrounded by pine forests on the Murree expressway with temperature-controlled indoor pool and terrace cafe.",
+        "highlight": "Lower Topa Pine Forest Mountain Resort",
+        "amenities": ["Indoor Heated Pool", "Pine Forest View", "Spa & Wellness", "Free Secure Parking", "Free High-Speed Wi-Fi"],
+        "website": "https://www.wyndhamhotels.com/ramada",
+        "phone": "+92 51 111384384",
+    },
+    {
+        "id": "fallback_mre_glamping_patriata",
+        "name": "Khanabadosh Glamps Murree",
+        "category": "glamping",
+        "badge_label": "Alpine Glamping Domes",
+        "latitude": 33.8451,
+        "longitude": 73.4664,
+        "city": "Murree",
+        "short_address": "Samandur Waterfall, Patriata",
+        "full_address": "Samandur Waterfall, Patriata, New Murree, Punjab",
+        "address": "Patriata, New Murree",
+        "rating": 4.6,
+        "reviews_count": 540,
+        "price_per_night_pkr": 22000,
+        "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80",
+        "description": "Scenic geodesic glamping domes nestled near Patriata chairlift and pine waterfalls, ideal for stargazing and crisp mountain air.",
+        "highlight": "Patriata Chairlift Glamping Domes",
+        "amenities": ["Geodesic Domes", "Mountain / Valley View", "Bonfire Area", "Free Wi-Fi", "Free Parking"],
+        "website": "https://khanabadosh.pk",
+        "phone": "+92 300 1234567",
+    },
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # ── MULTAN (6 Verified Stays) ──
+    # ─────────────────────────────────────────────────────────────────────────
+    {
+        "id": "fallback_mux_ramada",
+        "name": "Ramada by Wyndham Multan",
+        "category": "luxury",
+        "badge_label": "4-Star Luxury",
+        "latitude": 30.1985,
+        "longitude": 71.4642,
+        "city": "Multan",
+        "short_address": "76 Abdali Road, Cantt",
+        "full_address": "76 Abdali Rd, Bukhari Colony, Multan, Punjab 60000",
+        "address": "76 Abdali Rd, Cantt, Multan",
+        "rating": 4.5,
+        "reviews_count": 3400,
+        "price_per_night_pkr": 38000,
+        "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80",
+        "description": "Premier 4-star international hotel in Multan Cantt featuring modern suites, swimming pool, executive lounge, and international dining.",
+        "highlight": "Multan Cantt Premier International Luxury",
+        "amenities": ["Swimming Pool", "Spa & Wellness", "Free High-Speed Wi-Fi", "Free Secure Parking", "Fine Dining Restaurant"],
+        "website": "https://www.wyndhamhotels.com/ramada",
+        "phone": "+92 61 4540877",
+    },
+    {
+        "id": "fallback_mux_rumanza",
+        "name": "Rumanza by Pearl Continental",
+        "category": "resort",
+        "badge_label": "Golf & Country Resort",
+        "latitude": 30.2980,
+        "longitude": 71.4920,
+        "city": "Multan",
+        "short_address": "DHA Multan, Bosan Road",
+        "full_address": "Rumanza Golf Community, Sector B, DHA Multan, Punjab",
+        "address": "Sector B, DHA Multan",
+        "rating": 4.7,
+        "reviews_count": 1200,
+        "price_per_night_pkr": 45000,
+        "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
+        "description": "Exquisite golf and country resort overlooking the Nick Faldo championship golf course in DHA Multan with luxury chalet suites and spa.",
+        "highlight": "Championship Golf & Country Club Resort",
+        "amenities": ["Championship Golf Course", "Swimming Pool", "Luxury Spa", "Fine Dining", "Free Wi-Fi", "Free Secure Parking"],
+        "website": "https://www.pchotels.com/rumanza",
+        "phone": "+92 61 6211111",
+    },
+    {
+        "id": "fallback_mux_grand",
+        "name": "Best Western Plus Grand Hotel Multan",
+        "category": "luxury",
+        "badge_label": "4-Star Luxury",
+        "latitude": 30.1835,
+        "longitude": 71.4580,
+        "city": "Multan",
+        "short_address": "Old Bahawalpur Road",
+        "full_address": "Building No.8, Azmat Wasti Rd, Old Bahawalpur Rd, Multan, Punjab",
+        "address": "Old Bahawalpur Rd, Multan",
+        "rating": 4.4,
+        "reviews_count": 1800,
+        "price_per_night_pkr": 26000,
+        "image_url": "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1200&q=80",
+        "description": "Modern international business and luxury hotel situated centrally near ancient Multan monuments, shopping centers, and Cantt.",
+        "highlight": "Central International Comfort & Luxury",
+        "amenities": ["Free High-Speed Wi-Fi", "Fitness Center", "Complimentary Breakfast", "Free Parking", "Restaurant"],
+        "website": "https://www.bestwestern.com",
+        "phone": "+92 61 4545555",
+    },
+    {
+        "id": "fallback_mux_faletti",
+        "name": "Faletti's Grand Hotel Multan",
+        "category": "boutique",
+        "badge_label": "Heritage Boutique",
+        "latitude": 30.2150,
+        "longitude": 71.4350,
+        "city": "Multan",
+        "short_address": "Suraj Miani Road",
+        "full_address": "Suraj Miani Rd, Chah Chandey Wala, Multan, Punjab",
+        "address": "Suraj Miani Rd, Multan",
+        "rating": 4.3,
+        "reviews_count": 950,
+        "price_per_night_pkr": 24000,
+        "image_url": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80",
+        "description": "Boutique heritage-inspired hotel honoring Faletti's classic hospitality with grand suites, courtyards, and fine Pakistani dining.",
+        "highlight": "Classic Multani Heritage Hospitality",
+        "amenities": ["Heritage Architecture", "Fine Dining Restaurant", "Free Wi-Fi", "Free Secure Parking", "24/7 Room Service"],
+        "website": "https://falettis.com",
+        "phone": "+92 61 6511111",
+    },
+    {
+        "id": "fallback_mux_hotel_one",
+        "name": "Hotel One Tariq Road Multan",
+        "category": "budget",
+        "badge_label": "Business Comfort Stay",
+        "latitude": 30.1912,
+        "longitude": 71.4650,
+        "city": "Multan",
+        "short_address": "Tariq Road, Altaf Town",
+        "full_address": "59-B Tariq Rd, Altaf Town, Multan, Punjab",
+        "address": "59-B Tariq Rd, Multan",
+        "rating": 4.1,
+        "reviews_count": 1500,
+        "price_per_night_pkr": 14000,
+        "image_url": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&w=1200&q=80",
+        "description": "Reliable and comfortable business stay by Pearl Continental's Hotel One brand, offering contemporary amenities in central Multan.",
+        "highlight": "Central Multan Business Convenience",
+        "amenities": ["Free High-Speed Wi-Fi", "Complimentary Breakfast", "24/7 Front Desk", "Free Parking"],
+        "website": "https://hotelone.com.pk",
+        "phone": "+92 61 4580001",
+    },
+    {
+        "id": "fallback_mux_glamping",
+        "name": "Multan Mango Oasis Glamping",
+        "category": "glamping",
+        "badge_label": "Orchard Glamping / Pods",
+        "latitude": 30.2750,
+        "longitude": 71.5050,
+        "city": "Multan",
+        "short_address": "Bosan Road Mango Orchards",
+        "full_address": "Bosan Rd, Northern Multan, Punjab",
+        "address": "Bosan Rd, Multan",
+        "rating": 4.6,
+        "reviews_count": 420,
+        "price_per_night_pkr": 18000,
+        "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80",
+        "description": "Serene glamping retreat nestled among historic Multani Chaunsa mango orchards with stargazing domes and bonfire evenings.",
+        "highlight": "Historic Mango Orchard Stargazing Domes",
+        "amenities": ["Orchard View", "Stargazing Domes", "Bonfire Area", "Free Wi-Fi", "Free Parking"],
+        "website": "https://multanoasis.pk",
+        "phone": "+92 300 7654321",
+    },
 ]
 
 
@@ -1137,14 +1438,45 @@ def get_curated_fallback_stays(
 ) -> List[StayItem]:
     """
     Returns verified real Pakistani accommodations strictly bounded to the target city/coordinates.
-    Never leaks distant stays (e.g. searching Islamabad will never return Hunza or Skardu stays).
+    Never leaks distant stays (e.g. searching Islamabad will never return Murree or Skardu stays).
     """
     city_filter = (city_name or "").lower().strip()
     cat_filter = (category or "all").lower().strip()
     is_gps = any(k in city_filter for k in ["current location", "gps", "nearby"])
 
+    # For Murree and hill stations, cap radius to 15km to prevent spilling into Islamabad
+    effective_radius = radius_km
+    if any(s in city_filter for s in ["murree", "galiyat", "galyat", "bhurban"]):
+        effective_radius = min(radius_km, 15.0)
+
     results: List[StayItem] = []
     city_matched_items: List[Dict] = []
+
+    # Determine canonical destination city target
+    canonical_target: Optional[str] = None
+    if not is_gps and city_filter and city_filter != "all locations":
+        if any(s in city_filter for s in ["islamab", "isb", "rawalpind", "pindi"]):
+            canonical_target = "islamabad"
+        elif any(s in city_filter for s in ["lahor", "lhr"]):
+            canonical_target = "lahore"
+        elif any(s in city_filter for s in ["karach", "khi"]):
+            canonical_target = "karachi"
+        elif any(s in city_filter for s in ["multan"]):
+            canonical_target = "multan"
+        elif any(s in city_filter for s in ["hunza", "karimabad"]):
+            canonical_target = "hunza"
+        elif "skard" in city_filter:
+            canonical_target = "skardu"
+        elif "gilgit" in city_filter:
+            canonical_target = "gilgit"
+        elif any(s in city_filter for s in ["swat", "kalam", "malam"]):
+            canonical_target = "swat / kalam"
+        elif any(s in city_filter for s in ["murree", "galiyat", "galyat", "bhurban"]):
+            canonical_target = "murree"
+        elif any(s in city_filter for s in ["naran", "kaghan"]):
+            canonical_target = "naran / kaghan"
+        else:
+            canonical_target = city_filter
 
     for item in CURATED_HOTELS_DB:
         item_lat = item["latitude"]
@@ -1154,18 +1486,27 @@ def get_curated_fallback_stays(
         # 1. Geographic radius check if search center provided
         if search_lat is not None and search_lon is not None:
             dist_from_search = haversine_distance_km(search_lat, search_lon, item_lat, item_lon)
-            if dist_from_search > radius_km + 10.0:
+            if dist_from_search > effective_radius + 4.0:
                 continue
 
-        # 2. City name check if city specified and not GPS
-        if not is_gps and city_filter and city_filter != "all locations":
-            city_parts = [p.strip() for p in city_filter.split("/") if p.strip()]
-            item_parts = [p.strip() for p in item_city.split("/") if p.strip()]
-            matches_city = any(
-                cp in item_city or any(ip in cp for ip in item_parts)
-                for cp in city_parts
-            )
-            if not matches_city:
+        # 2. Strict City name check if city specified and not GPS (Strict zero cross-city leakage)
+        if not is_gps and canonical_target:
+            item_target = item_city
+            if any(s in item_city for s in ["islamab", "rawalpind"]):
+                item_target = "islamabad"
+            elif any(s in item_city for s in ["multan"]):
+                item_target = "multan"
+            elif any(s in item_city for s in ["hunza", "karimabad"]):
+                item_target = "hunza"
+            elif any(s in item_city for s in ["swat", "kalam"]):
+                item_target = "swat / kalam"
+            elif any(s in item_city for s in ["naran", "kaghan"]):
+                item_target = "naran / kaghan"
+            elif any(s in item_city for s in ["murree", "bhurban", "galiyat"]):
+                item_target = "murree"
+
+            # Strict equality on canonical city or direct match
+            if item_target != canonical_target and canonical_target not in item_city:
                 continue
 
         city_matched_items.append(item)

@@ -22,7 +22,7 @@ from app.services.google_places_service import google_places_service
 from app.services.google_routes_service import google_routes_service
 from app.services.hotel_enrichment_service import hotel_enrichment_service
 from app.services.location_resolution_service import location_resolution_service
-from app.utils.geo import format_price_tag, is_valid_coordinates
+from app.utils.geo import format_price_tag, is_valid_coordinates, haversine_distance_km
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,40 @@ async def resolve_location(req: LocationResolutionRequest):
             longitude=73.0479,
             error=str(e),
         )
+
+
+@router.get(
+    "/search",
+    response_model=HotelSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Search Real Accommodations (GET)",
+    description="Discovers live hotels via query parameters.",
+)
+async def search_hotels_get(
+    city: Optional[str] = Query(default=None),
+    location_name: Optional[str] = Query(default=None),
+    latitude: Optional[float] = Query(default=None),
+    longitude: Optional[float] = Query(default=None),
+    user_latitude: Optional[float] = Query(default=None),
+    user_longitude: Optional[float] = Query(default=None),
+    radius_km: Optional[float] = Query(default=None),
+    category: Optional[str] = Query(default="all"),
+    sort_by: Optional[str] = Query(default="nearest"),
+    search_query: Optional[str] = Query(default=None),
+):
+    req = HotelSearchRequest(
+        city=city,
+        location_name=location_name,
+        latitude=latitude,
+        longitude=longitude,
+        user_latitude=user_latitude,
+        user_longitude=user_longitude,
+        radius_km=radius_km,
+        category=category,
+        sort_by=sort_by,
+        search_query=search_query,
+    )
+    return await search_hotels(req)
 
 
 @router.post(
@@ -120,14 +154,18 @@ async def search_hotels(req: HotelSearchRequest):
                 search_lat = 33.6844
                 search_lon = 73.0479
 
-        if req.radius_km is not None and req.radius_km >= 25.0:
+        try:
+            resolved = await location_resolution_service.resolve_destination(location_name)
+            radius_km = resolved.radius_km
+        except Exception:
+            radius_km = settings.CITY_SEARCH_RADIUS_KM
+
+        if req.radius_km is not None and 10.0 <= req.radius_km <= 50.0:
             radius_km = req.radius_km
-        else:
-            try:
-                resolved = await location_resolution_service.resolve_destination(location_name)
-                radius_km = resolved.radius_km
-            except Exception:
-                radius_km = settings.CITY_SEARCH_RADIUS_KM
+
+        # Strict Murree & hill station radius clamp
+        if any(k in location_name.lower() for k in ["murree", "galyat", "bhurban", "nathia"]):
+            radius_km = min(radius_km, 15.0)
 
     category = (req.category or "all").lower().strip()
     # Normalize category aliases
@@ -171,6 +209,9 @@ async def search_hotels(req: HotelSearchRequest):
             category=category,
             origin_lat=user_gps_lat,
             origin_lon=user_gps_lon,
+            search_lat=search_lat,
+            search_lon=search_lon,
+            radius_km=radius_km,
         )
         is_fallback = True
 
@@ -187,6 +228,64 @@ async def search_hotels(req: HotelSearchRequest):
         is_fallback = True
     else:
         is_fallback = any(s.id.startswith("fallback_") for s in all_stays)
+
+    # STRICT RADIUS ENFORCEMENT & CROSS-CITY LEAKAGE GUARD:
+    if search_lat is not None and search_lon is not None and location_name.lower() != "all locations":
+        max_allowed_dist = radius_km + 4.0
+        strictly_bounded = [
+            s for s in all_stays
+            if s.latitude is not None and s.longitude is not None
+            and haversine_distance_km(search_lat, search_lon, s.latitude, s.longitude) <= max_allowed_dist
+        ]
+        all_stays = strictly_bounded
+
+    # Explicit cross-city boundary checks
+    if any(k in location_name.lower() for k in ["murree", "galyat", "bhurban"]):
+        strictly_murree = [
+            s for s in all_stays
+            if not any(
+                t in (f"{s.name} {s.address} {s.short_address} {s.full_address}").lower()
+                for t in [
+                    "islamabad", "rawalpindi", "f-5", "f-6", "f-7", "f-8", "g-5", "g-6", "g-7", "g-8",
+                    "blue area", "centaurus", "convention centre", "shakar parian", "rawal lake",
+                    "pir sohawa", "sangada", "dha ", "bahria "
+                ]
+            )
+            and (s.latitude is None or s.latitude >= 33.83)
+            and (s.longitude is None or s.longitude >= 73.28)
+        ]
+        all_stays = strictly_murree
+    elif "islamabad" in location_name.lower():
+        all_stays = [
+            s for s in all_stays
+            if not any(
+                t in (f"{s.name} {s.address} {s.short_address} {s.full_address}").lower()
+                for t in ["murree", "bhurban", "galyat", "nathia gali"]
+            )
+            and (s.latitude is None or s.latitude <= 33.84)
+        ]
+    elif "multan" in location_name.lower():
+        all_stays = [
+            s for s in all_stays
+            if not any(
+                t in (f"{s.name} {s.address} {s.short_address} {s.full_address}").lower()
+                for t in ["lahore", "bahawalpur", "khanewal", "karachi", "islamabad"]
+            )
+            and (s.latitude is None or (29.8 <= s.latitude <= 30.5 and 71.1 <= s.longitude <= 71.8))
+        ]
+
+    # If filtering depleted results, recover verified stays from curated database for that city
+    if not all_stays:
+        all_stays = get_curated_fallback_stays(
+            city_name=location_name,
+            category=category,
+            origin_lat=user_gps_lat,
+            origin_lon=user_gps_lon,
+            search_lat=search_lat,
+            search_lon=search_lon,
+            radius_km=radius_km,
+        )
+        is_fallback = True
 
     # 5. Filter by Category & Stays per Category
     filtered_stays: List[StayItem] = []
@@ -219,12 +318,22 @@ async def search_hotels(req: HotelSearchRequest):
     # 6. Apply Text Query Filter if provided
     if req.search_query and req.search_query.strip():
         q = req.search_query.lower().strip()
-        filtered_stays = [
-            s for s in filtered_stays
-            if q in s.name.lower()
-            or (s.address and q in s.address.lower())
-            or (s.city and q in s.city.lower())
-        ]
+        is_city_query = (
+            q in location_name.lower()
+            or location_name.lower() in q
+            or any(stem in q for stem in ["islamab", "lahor", "karach", "rawalpind", "murree", "swat", "hunza", "skardu", "peshawar", "gilgit", "all"])
+        )
+        if not is_city_query:
+            matched = [
+                s for s in filtered_stays
+                if q in s.name.lower()
+                or (s.address and q in s.address.lower())
+                or (s.city and q in s.city.lower())
+                or (s.highlight and q in s.highlight.lower())
+                or any(q in a.lower() for a in (s.amenities or []))
+            ]
+            if matched:
+                filtered_stays = matched
 
     # Limit to top results for Route calculation & AI enrichment
     target_stays = filtered_stays[:20]

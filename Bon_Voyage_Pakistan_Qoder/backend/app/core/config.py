@@ -74,6 +74,16 @@ class Settings:
             or ""
         ).strip()
 
+    @property
+    def OPENWEATHER_API_KEY(self) -> str:
+        # Priority: OpenWeather_API -> OPENWEATHER_API_KEY -> OPEN_WEATHER_API
+        return (
+            os.getenv("OpenWeather_API")
+            or os.getenv("OPENWEATHER_API_KEY")
+            or os.getenv("OPEN_WEATHER_API")
+            or ""
+        ).strip()
+
     # AI Models
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
     GEMINI_FALLBACK_MODELS: List[str] = [
@@ -144,12 +154,15 @@ class Settings:
         "pharmacy": ["pharmacy"],
         "doctor": ["doctor"],
         "first_aid": ["hospital", "medical_clinic", "doctor"],
+        "firstaid": ["hospital", "medical_clinic", "doctor"],
         "emergency": ["hospital"],
         "police": ["police"],
         "fire": ["fire_station"],
         "ambulance": ["hospital"],
         "government": ["hospital"],
+        "govt": ["hospital"],
         "private": ["hospital", "medical_clinic"],
+        "privatehospital": ["hospital", "medical_clinic"],
     }
     GOOGLE_HELP_TYPES: List[str] = [
         "hospital",
@@ -160,19 +173,24 @@ class Settings:
         "fire_station",
     ]
 
-    # Supported Pakistani Cities with default coordinates
+    # Supported Pakistani Cities with canonical center coordinates
     SUPPORTED_CITIES = [
         {"name": "Islamabad", "latitude": 33.6844, "longitude": 73.0479},
         {"name": "Lahore", "latitude": 31.5204, "longitude": 74.3587},
-        {"name": "Karachi", "latitude": 24.8607, "longitude": 67.0011},
-        {"name": "Murree", "latitude": 33.9062, "longitude": 73.3903},
-        {"name": "Swat / Kalam", "latitude": 35.4909, "longitude": 72.5878},
         {"name": "Hunza", "latitude": 36.3167, "longitude": 74.6500},
+        {"name": "Hunza / Karimabad", "latitude": 36.3167, "longitude": 74.6500},
         {"name": "Skardu", "latitude": 35.2971, "longitude": 75.6333},
-        {"name": "Peshawar", "latitude": 34.0151, "longitude": 71.5249},
-        {"name": "Gwadar", "latitude": 25.1264, "longitude": 62.3225},
         {"name": "Gilgit", "latitude": 35.9208, "longitude": 74.3144},
+        {"name": "Swat / Kalam", "latitude": 35.4859, "longitude": 72.5855},
+        {"name": "Karachi", "latitude": 24.8607, "longitude": 67.0011},
+        {"name": "Rawalpindi", "latitude": 33.5973, "longitude": 73.0479},
+        {"name": "Murree", "latitude": 33.9062, "longitude": 73.3903},
         {"name": "Naran / Kaghan", "latitude": 34.9085, "longitude": 73.6542},
+        {"name": "Peshawar", "latitude": 34.0151, "longitude": 71.5249},
+        {"name": "Quetta", "latitude": 30.1798, "longitude": 66.9750},
+        {"name": "Ziarat", "latitude": 30.3824, "longitude": 67.7256},
+        {"name": "Multan", "latitude": 30.1575, "longitude": 71.5249},
+        {"name": "Gwadar", "latitude": 25.1264, "longitude": 62.3225},
     ]
 
     # CORS Settings

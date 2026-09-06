@@ -197,7 +197,8 @@ STRICT INSTRUCTIONS - DO NOT GUESS:
 2. If the image clearly shows a recognizable Pakistani landmark with sufficient confidence (confidence >= 0.65), set "identified": true.
 3. If the image is unclear, blurry, shows an ordinary non-landmark building, personal portrait, random object, animal, food, or non-Pakistani landmark, you MUST set "identified": false, "landmark_name": null, "confidence": 0.0, and "message": "The landmark could not be identified reliably from this image."
 4. DO NOT fabricate or invent landmark names, dates, historical events, rulers, or facts. Provide only authentic, verified historical and architectural information.
-5. Return ONLY a valid JSON object matching the following schema:
+5. 'things_to_do' MUST strictly be actionable visitor activities, tourist experiences, exploration highlights, and practical things to do (e.g. 'Explore the grand prayer hall', 'Photograph the minarets at sunset', 'Visit the heritage museum', 'Sample street food at the nearby food street'). DO NOT put historical milestones, construction dates, rulers, or past history in 'things_to_do'.
+6. Return ONLY a valid JSON object matching the following schema:
 
 {{
   "identified": true or false,
@@ -207,8 +208,14 @@ STRICT INSTRUCTIONS - DO NOT GUESS:
   "historical_era": "Historical Era (e.g. Mughal Era - 17th Century)" or null,
   "history_overview": "Concise 2-3 sentence historical background" or null,
   "historical_events": [
-    "Key historical event 1",
-    "Key historical event 2"
+    "Key historical milestone or date 1",
+    "Key historical milestone or date 2"
+  ],
+  "things_to_do": [
+    "Engaging visitor activity 1 (e.g. Explore the grand courtyard and red sandstone arches)",
+    "Engaging visitor activity 2 (e.g. Photograph the marble domes at golden hour)",
+    "Engaging visitor activity 3 (e.g. Visit the on-site historical museum)",
+    "Engaging visitor activity 4 (e.g. Stroll through the adjoining gardens at dusk)"
   ],
   "interesting_facts": [
     "Fascinating fact 1",
@@ -257,14 +264,24 @@ STRICT INSTRUCTIONS - DO NOT GUESS:
 
                 # Confidence threshold check
                 if identified and confidence >= 0.60 and landmark_name:
+                    city_reg = parsed.get("city_or_region") or "Pakistan"
+                    raw_things = parsed.get("things_to_do") or []
+                    if not raw_things:
+                        raw_things = [
+                            f"Explore the iconic architecture and courtyards of {landmark_name}.",
+                            f"Capture panoramic photos of {landmark_name} during morning or sunset golden hour.",
+                            "Discover the heritage exhibits and cultural displays on site.",
+                            f"Stroll through the surrounding areas and local traditional bazaars in {city_reg}.",
+                        ]
                     return LandmarkResponse(
                         success=True,
                         identified=True,
                         landmark_name=landmark_name,
-                        city_or_region=parsed.get("city_or_region") or "Pakistan",
+                        city_or_region=city_reg,
                         historical_era=parsed.get("historical_era") or "Pakistani Heritage Site",
                         history_overview=parsed.get("history_overview") or "",
                         historical_events=parsed.get("historical_events") or [],
+                        things_to_do=raw_things,
                         interesting_facts=parsed.get("interesting_facts") or [],
                         architectural_significance=parsed.get("architectural_significance") or "",
                         travel_tip=parsed.get("travel_tip") or "Open all year round for visitors.",
@@ -280,6 +297,7 @@ STRICT INSTRUCTIONS - DO NOT GUESS:
                         historical_era=None,
                         history_overview=None,
                         historical_events=[],
+                        things_to_do=[],
                         interesting_facts=[],
                         architectural_significance=None,
                         travel_tip=None,

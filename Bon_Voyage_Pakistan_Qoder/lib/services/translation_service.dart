@@ -164,7 +164,7 @@ class TranslationService {
               'romanized': data['romanized_pronunciation']?.toString() ?? '',
               'source_romanized': data['source_romanized_pronunciation']?.toString() ?? '',
               'audio_base64': data['audio_base64']?.toString() ?? '',
-              'detected_language': data['detected_source_language']?.toString() ?? '',
+              'detected_language': (data['detected_source_language'] ?? data['detected_language'] ?? '').toString(),
             };
           }
         }
@@ -229,7 +229,7 @@ class TranslationService {
               'source_romanized': data['source_romanized_pronunciation']?.toString() ?? '',
               'transcript': data['transcript']?.toString() ?? '',
               'audio_base64': data['audio_base64']?.toString() ?? '',
-              'detected_language': data['detected_source_language']?.toString() ?? '',
+              'detected_language': (data['detected_source_language'] ?? data['detected_language'] ?? '').toString(),
             };
           }
         }

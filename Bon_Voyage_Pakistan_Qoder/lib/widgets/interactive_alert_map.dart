@@ -43,10 +43,6 @@ class _InteractiveAlertMapState extends State<InteractiveAlertMap>
     );
   }
 
-  @override
-  void disposeValidate() {
-    _pulseController.dispose();
-  }
 
   @override
   void dispose() {

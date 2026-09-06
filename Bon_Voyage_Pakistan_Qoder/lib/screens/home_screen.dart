@@ -9,6 +9,7 @@ import '../services/trip_history_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
 import '../widgets/theme_toggle.dart';
+import '../widgets/featured_escapes_carousel.dart';
 import 'ai_tour_planning_screen.dart';
 import 'first_aid_hospitals_screen.dart';
 import 'food_dining_screen.dart';
@@ -19,6 +20,7 @@ import 'settings_screen.dart';
 import 'translator_screen.dart';
 import 'travel_alerts_screen.dart';
 import 'trip_checklist_screen.dart';
+import 'weather_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -143,43 +145,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // =========================================================
-  // SNACKBAR
-  // =========================================================
 
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 16, 16, 105),
-        backgroundColor:
-            Theme.of(context).colorScheme.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        content: Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_rounded,
-              color: AppTheme.primary,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '$feature is coming soon!',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // =========================================================
   // BOTTOM NAVIGATION
@@ -562,7 +528,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => const TravelAlertsScreen(),
+                                    builder: (_) => const WeatherScreen(),
                                   ),
                                 );
                               },
@@ -578,9 +544,10 @@ class _HomeScreenState extends State<HomeScreen>
                                   alignment: Alignment.center,
                                   children: [
                                     Icon(
-                                      Icons.notifications_outlined,
+                                      Icons.wb_sunny_outlined,
                                       color:
-                                          colorScheme.onSurfaceVariant,
+                                          const Color(0xFF0284C7),
+                                      size: 22,
                                     ),
                                     Positioned(
                                       top: 11,
@@ -589,7 +556,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         width: 8,
                                         height: 8,
                                         decoration: BoxDecoration(
-                                          color: colorScheme.secondary,
+                                          color: const Color(0xFF059669),
                                           shape: BoxShape.circle,
                                           border: Border.all(
                                             color: colorScheme
@@ -803,32 +770,13 @@ class _HomeScreenState extends State<HomeScreen>
                         18,
                       ),
                       sliver: SliverToBoxAdapter(
-                        child: Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Featured Escapes',
-                              style: TextStyle(
-                                color: colorScheme.onSurface,
-                                fontSize: 23,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-
-                            TextButton(
-                              onPressed: () {
-                                _showComingSoon('All Destinations');
-                              },
-                              child: Text(
-                                'See All',
-                                style: TextStyle(
-                                  color: AppTheme.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          'Featured Escapes',
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 23,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ),
@@ -837,61 +785,8 @@ class _HomeScreenState extends State<HomeScreen>
                     // DESTINATION CARDS
                     // =================================================
 
-                    SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: 360,
-                        child: ListView(
-                          physics: const BouncingScrollPhysics(),
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                          ),
-                          children: [
-                            _DestinationCard(
-                              title: 'Fairy Meadows',
-                              location: 'Gilgit-Baltistan',
-                              tag: 'Adventure',
-                              icon: Icons.landscape_rounded,
-                              imageUrl:
-                                  'https://images.unsplash.com/photo-1590076215668-97019effa016',
-                              tagColor: const Color(0xFF8CCBB2),
-                              onTap: () {
-                                _showComingSoon('Fairy Meadows');
-                              },
-                            ),
-
-                            const SizedBox(width: 16),
-
-                            _DestinationCard(
-                              title: 'Lahore Heritage',
-                              location: 'Punjab',
-                              tag: 'Culture',
-                              icon: Icons.account_balance_rounded,
-                              imageUrl:
-                                  'https://images.unsplash.com/photo-1584809837053-1f1f2eae0b1d',
-                              tagColor: colorScheme.secondary,
-                              onTap: () {
-                                _showComingSoon('Lahore Heritage');
-                              },
-                            ),
-
-                            const SizedBox(width: 16),
-
-                            _DestinationCard(
-                              title: 'Attabad Lake',
-                              location: 'Hunza Valley',
-                              tag: 'Nature',
-                              icon: Icons.water_rounded,
-                              imageUrl:
-                                  'https://images.unsplash.com/photo-1609766857041-ed402ea8069a',
-                              tagColor: const Color(0xFFA8E7CD),
-                              onTap: () {
-                                _showComingSoon('Attabad Lake');
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
+                    const SliverToBoxAdapter(
+                      child: FeaturedEscapesCarousel(),
                     ),
 
                     // =================================================
@@ -1453,161 +1348,7 @@ class _ProfileMenuTile extends StatelessWidget {
   }
 }
 
-// =========================================================
-// DESTINATION CARD
-// =========================================================
 
-class _DestinationCard extends StatelessWidget {
-  final String title;
-  final String location;
-  final String tag;
-  final IconData icon;
-  final String imageUrl;
-  final Color tagColor;
-  final VoidCallback onTap;
-
-  const _DestinationCard({
-    required this.title,
-    required this.location,
-    required this.tag,
-    required this.icon,
-    required this.imageUrl,
-    required this.tagColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 280,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(25),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (
-                  context,
-                  error,
-                  stackTrace,
-                ) {
-                  return Container(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest,
-                    child: Icon(
-                      icon,
-                      size: 70,
-                      color: AppTheme.primary,
-                    ),
-                  );
-                },
-              ),
-
-              // IMAGE GRADIENT
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Color(0x22000000),
-                      Color(0xF0020305),
-                    ],
-                  ),
-                ),
-              ),
-
-              // TAG
-              Positioned(
-                top: 16,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tagColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        icon,
-                        size: 14,
-                        color: Colors.black87,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        tag,
-                        style: const TextStyle(
-                          color: Colors.black87,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // TEXT
-              Positioned(
-                left: 22,
-                right: 22,
-                bottom: 24,
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 23,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-
-                    const SizedBox(height: 7),
-
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_rounded,
-                          size: 16,
-                          color: Colors.white70,
-                        ),
-
-                        const SizedBox(width: 5),
-
-                        Text(
-                          location,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // =========================================================
 // BOTTOM NAVIGATION ITEM

@@ -21,8 +21,47 @@ class ResolvedLocation(BaseModel):
     is_ambiguous: bool = Field(default=False, description="Whether the location is ambiguous")
 
 
-# In-memory coordinate cache
-_COORDINATE_CACHE: Dict[str, ResolvedLocation] = {}
+# Canonical coordinates and search radii for supported Pakistani cities
+CANONICAL_CITY_COORDINATES: Dict[str, Dict[str, Any]] = {
+    "islamabad": {"name": "Islamabad", "latitude": 33.6844, "longitude": 73.0479, "radius_km": 20.0},
+    "rawalpindi": {"name": "Rawalpindi", "latitude": 33.5973, "longitude": 73.0479, "radius_km": 20.0},
+    "lahore": {"name": "Lahore", "latitude": 31.5204, "longitude": 74.3587, "radius_km": 28.0},
+    "karachi": {"name": "Karachi", "latitude": 24.8607, "longitude": 67.0011, "radius_km": 32.0},
+    "hunza": {"name": "Hunza", "latitude": 36.3167, "longitude": 74.6500, "radius_km": 25.0},
+    "karimabad": {"name": "Hunza / Karimabad", "latitude": 36.3167, "longitude": 74.6500, "radius_km": 20.0},
+    "hunza / karimabad": {"name": "Hunza / Karimabad", "latitude": 36.3167, "longitude": 74.6500, "radius_km": 25.0},
+    "skardu": {"name": "Skardu", "latitude": 35.2971, "longitude": 75.6333, "radius_km": 25.0},
+    "gilgit": {"name": "Gilgit", "latitude": 35.9208, "longitude": 74.3144, "radius_km": 20.0},
+    "swat": {"name": "Swat / Kalam", "latitude": 35.4859, "longitude": 72.5855, "radius_km": 30.0},
+    "kalam": {"name": "Swat / Kalam", "latitude": 35.4859, "longitude": 72.5855, "radius_km": 20.0},
+    "swat / kalam": {"name": "Swat / Kalam", "latitude": 35.4859, "longitude": 72.5855, "radius_km": 30.0},
+    "murree": {"name": "Murree", "latitude": 33.9062, "longitude": 73.3903, "radius_km": 15.0},
+    "murree & galiyat": {"name": "Murree & Galiyat", "latitude": 33.9062, "longitude": 73.3903, "radius_km": 15.0},
+    "bhurban": {"name": "Bhurban", "latitude": 33.9570, "longitude": 73.4590, "radius_km": 12.0},
+    "naran": {"name": "Naran / Kaghan", "latitude": 34.9085, "longitude": 73.6542, "radius_km": 25.0},
+    "kaghan": {"name": "Naran / Kaghan", "latitude": 34.9085, "longitude": 73.6542, "radius_km": 25.0},
+    "naran / kaghan": {"name": "Naran / Kaghan", "latitude": 34.9085, "longitude": 73.6542, "radius_km": 25.0},
+    "peshawar": {"name": "Peshawar", "latitude": 34.0151, "longitude": 71.5249, "radius_km": 20.0},
+    "quetta": {"name": "Quetta", "latitude": 30.1798, "longitude": 66.9750, "radius_km": 20.0},
+    "ziarat": {"name": "Ziarat", "latitude": 30.3824, "longitude": 67.7256, "radius_km": 18.0},
+    "multan": {"name": "Multan", "latitude": 30.1575, "longitude": 71.5249, "radius_km": 20.0},
+    "gwadar": {"name": "Gwadar", "latitude": 25.1264, "longitude": 62.3225, "radius_km": 20.0},
+    "chitral": {"name": "Chitral", "latitude": 35.8510, "longitude": 71.7864, "radius_km": 25.0},
+    "abbottabad": {"name": "Abbottabad", "latitude": 34.1688, "longitude": 73.2215, "radius_km": 20.0},
+}
+
+# In-memory coordinate cache initialized with canonical cities
+_COORDINATE_CACHE: Dict[str, ResolvedLocation] = {
+    k: ResolvedLocation(
+        name=v["name"],
+        country="Pakistan",
+        latitude=v["latitude"],
+        longitude=v["longitude"],
+        radius_km=v["radius_km"],
+        is_ambiguous=False,
+    )
+    for k, v in CANONICAL_CITY_COORDINATES.items()
+}
 
 
 class LocationResolutionService:
@@ -129,16 +168,60 @@ Destination: "{destination}"
         if cache_key in _COORDINATE_CACHE:
             return _COORDINATE_CACHE[cache_key]
 
-        # Check supported cities registry
-        for c in settings.SUPPORTED_CITIES:
-            c_name = c["name"].lower()
-            if c_name == cache_key or cache_key in c_name or c_name in cache_key:
+        # 1. Direct canonical lookup & stem/substring matching
+        for key, info in CANONICAL_CITY_COORDINATES.items():
+            key_clean = key.lower()
+            if (
+                key_clean == cache_key
+                or key_clean in cache_key
+                or cache_key in key_clean
+            ):
                 res = ResolvedLocation(
-                    name=c["name"],
+                    name=info["name"],
                     country="Pakistan",
-                    latitude=c["latitude"],
-                    longitude=c["longitude"],
-                    radius_km=settings.CITY_SEARCH_RADIUS_KM,
+                    latitude=info["latitude"],
+                    longitude=info["longitude"],
+                    radius_km=info["radius_km"],
+                    is_ambiguous=False,
+                )
+                _COORDINATE_CACHE[cache_key] = res
+                return res
+
+        # 2. Key stem matching for common variations / typos
+        stem_map = {
+            "islamab": "islamabad",
+            "isb": "islamabad",
+            "lahor": "lahore",
+            "lhr": "lahore",
+            "karach": "karachi",
+            "khi": "karachi",
+            "hunza": "hunza",
+            "karimabad": "karimabad",
+            "skardu": "skardu",
+            "skard": "skardu",
+            "gilgit": "gilgit",
+            "swat": "swat",
+            "kalam": "kalam",
+            "murree": "murree",
+            "naran": "naran",
+            "kaghan": "kaghan",
+            "rawalpind": "rawalpindi",
+            "pindi": "rawalpindi",
+            "peshaw": "peshawar",
+            "quetta": "quetta",
+            "ziarat": "ziarat",
+            "multan": "multan",
+            "gwadar": "gwadar",
+        }
+        for stem, target_key in stem_map.items():
+            if stem in cache_key:
+                info = CANONICAL_CITY_COORDINATES[target_key]
+                res = ResolvedLocation(
+                    name=info["name"],
+                    country="Pakistan",
+                    latitude=info["latitude"],
+                    longitude=info["longitude"],
+                    radius_km=info["radius_km"],
                     is_ambiguous=False,
                 )
                 _COORDINATE_CACHE[cache_key] = res

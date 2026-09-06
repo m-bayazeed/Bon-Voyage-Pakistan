@@ -62,14 +62,9 @@ class BackendHotelDataProvider implements HotelDataProvider {
       }
     } else {
       // City selection / custom search: MUST use destination coordinates, NOT device GPS!
-      if (userLat != null && userLng != null) {
-        searchLat = userLat;
-        searchLon = userLng;
-      } else {
-        final point = await HotelLocationService.resolveDestination(locationName);
-        searchLat = point.latitude;
-        searchLon = point.longitude;
-      }
+      final point = await HotelLocationService.resolveDestination(locationName);
+      searchLat = point.latitude;
+      searchLon = point.longitude;
     }
 
     // 2. Resolve device GPS origin for routing distance & ETA
@@ -83,14 +78,27 @@ class BackendHotelDataProvider implements HotelDataProvider {
       }
     }
 
-    // 3. Search radius: 20km for GPS, 40km or whole-city radius for cities
-    final searchRadius = radiusKm ?? (isGpsMode ? 20.0 : 40.0);
+    // 3. Dynamic Search radius: 15km for Murree/Galyat, 20km for standard cities/GPS, 30km for mega cities
+    final double defaultRadius;
+    final locLower = locationName.toLowerCase();
+    if (locLower.contains('murree') || locLower.contains('galyat') || locLower.contains('bhurban') || locLower.contains('nathia')) {
+      defaultRadius = 15.0;
+    } else if (locLower.contains('karachi') || locLower.contains('lahore')) {
+      defaultRadius = 30.0;
+    } else if (isGpsMode) {
+      defaultRadius = 20.0;
+    } else {
+      defaultRadius = 20.0;
+    }
+    final searchRadius = radiusKm ?? defaultRadius;
 
     final categoryKey = category == null || category == HotelCategory.all
         ? 'all'
         : category.name.toLowerCase();
 
     final payload = {
+      'city': locationName,
+      'location_name': locationName,
       'latitude': searchLat,
       'longitude': searchLon,
       'user_latitude': gpsOriginLat,
@@ -98,12 +106,11 @@ class BackendHotelDataProvider implements HotelDataProvider {
       'radius_km': searchRadius,
       'category': categoryKey,
       'sort_by': sortBy.apiKey,
-      'location_name': locationName,
       'search_query': searchQuery,
     };
 
     debugPrint('\n=================== HOTEL API REQUEST ===================');
-    debugPrint('Location Name: $locationName');
+    debugPrint('City / Location: $locationName');
     debugPrint('Search Center Latitude: $searchLat');
     debugPrint('Search Center Longitude: $searchLon');
     debugPrint('User Device GPS: $gpsOriginLat, $gpsOriginLon');
@@ -125,7 +132,9 @@ class BackendHotelDataProvider implements HotelDataProvider {
 
     for (final host in candidateHosts) {
       for (final port in ports) {
-        final url = Uri.parse('http://$host:$port/api/v1/hotels/search');
+        final url = Uri.parse(
+          'http://$host:$port/api/v1/hotels/search?city=${Uri.encodeComponent(locationName)}',
+        );
         try {
           debugPrint('[Hotels] POST $url (Payload: $payload)...');
           final response = await http
@@ -134,7 +143,7 @@ class BackendHotelDataProvider implements HotelDataProvider {
                 headers: {'Content-Type': 'application/json'},
                 body: jsonEncode(payload),
               )
-              .timeout(const Duration(seconds: 4));
+              .timeout(const Duration(seconds: 12));
 
           if (response.statusCode == 200) {
             final data = jsonDecode(response.body);

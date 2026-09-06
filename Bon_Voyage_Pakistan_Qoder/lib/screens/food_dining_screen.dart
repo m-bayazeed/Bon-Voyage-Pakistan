@@ -85,6 +85,7 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
         city: _selectedCity,
         useCurrentLocation: _useCurrentLocation,
         category: _selectedCategory,
+        cuisine: _selectedCategory != FoodCategory.all ? _selectedCategory.cuisineName : null,
         sortOption: _selectedSort,
         userLat: _deviceGpsLat,
         userLng: _deviceGpsLng,
@@ -107,6 +108,7 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
           city: _selectedCity,
           useCurrentLocation: _useCurrentLocation,
           category: _selectedCategory,
+          cuisine: _selectedCategory != FoodCategory.all ? _selectedCategory.cuisineName : null,
           sortOption: _selectedSort,
           userLat: _deviceGpsLat,
           userLng: _deviceGpsLng,
@@ -522,19 +524,6 @@ class _FoodDiningScreenState extends State<FoodDiningScreen> {
                           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: onSurface),
                         ),
                       ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppTheme.darkSurfaceVariant.withValues(alpha: 0.5)
-                          : AppTheme.lightSurfaceVariant.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      place.formattedCost,
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: onSurface),
                     ),
                   ),
                 ],

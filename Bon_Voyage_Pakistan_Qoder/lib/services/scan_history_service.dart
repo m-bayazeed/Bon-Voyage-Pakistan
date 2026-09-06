@@ -396,15 +396,38 @@ class ScanHistoryService {
 
         final facts = parseList(responseData['interesting_facts']);
         final events = parseList(responseData['historical_events']);
+        final thingsToDo = parseList(responseData['things_to_do']);
         final archSignificance = responseData['architectural_significance']?.toString();
         final travelTip = responseData['travel_tip']?.toString();
         final historyOverview = responseData['history_overview']?.toString() ?? '';
         final landmarkName = responseData['landmark_name']?.toString();
 
-        // Combine architectural significance and facts nicely if helpful
+        // Combine architectural significance, facts, and historical milestones under keyFacts
         final combinedFacts = <String>[...facts];
         if (archSignificance != null && archSignificance.isNotEmpty && !combinedFacts.contains(archSignificance)) {
           combinedFacts.insert(0, archSignificance);
+        }
+        for (final ev in events) {
+          if (ev.isNotEmpty && !combinedFacts.contains(ev)) {
+            combinedFacts.add(ev);
+          }
+        }
+
+        // Actionable visitor activities for "Top Things to Do" (NEVER historical events)
+        List<String> activities = [];
+        if (thingsToDo.isNotEmpty) {
+          activities = thingsToDo;
+        } else if (isIdentified && landmarkName != null && landmarkName.isNotEmpty) {
+          final loc = responseData['city_or_region']?.toString() ?? 'the area';
+          activities = [
+            'Explore the iconic architecture, courtyards, and grounds of $landmarkName.',
+            'Capture panoramic photos during early morning or sunset golden hour.',
+            'Discover the heritage exhibits and cultural displays on site.',
+            'Sample traditional regional delicacies and tea at local eateries in $loc.',
+          ];
+          if (travelTip != null && travelTip.isNotEmpty && !travelTip.toLowerCase().contains('year round')) {
+            activities.add(travelTip);
+          }
         }
 
         debugPrint('[SCAN] Result: identified=$isIdentified, landmark=$landmarkName, confidence=$confidence');
@@ -423,7 +446,7 @@ class ScanHistoryService {
               : (responseData['message']?.toString() ?? ''),
           historicalStory: historyOverview,
           keyFacts: combinedFacts,
-          recommendedActivities: events.isNotEmpty ? events : (travelTip != null ? [travelTip] : []),
+          recommendedActivities: activities,
           bestTimeToVisit: travelTip ?? 'All year round',
           timestamp: DateTime.now(),
           scanType: isUpload ? ScanType.upload : ScanType.camera,

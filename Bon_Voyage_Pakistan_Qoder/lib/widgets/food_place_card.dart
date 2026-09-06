@@ -219,23 +219,6 @@ class FoodPlaceCard extends StatelessWidget {
                               ],
                             ),
                           ),
-
-                          // Cost Per Person
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              place.formattedCost,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
                     ),

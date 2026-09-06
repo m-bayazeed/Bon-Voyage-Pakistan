@@ -28,8 +28,17 @@ class FirstAidHospitalsScreen extends StatefulWidget {
 
 class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
     with TickerProviderStateMixin {
+  // ── Allowed Assistance Types ──
+  static const List<FacilityType> allowedAssistanceTypes = [
+    FacilityType.emergency,
+    FacilityType.firstAid,
+    FacilityType.privateHospital,
+    FacilityType.government,
+    FacilityType.pharmacy,
+  ];
+
   // ── Filters & Search State ──
-  FacilityType? _selectedType;
+  late FacilityType _selectedType;
   bool _isEmergencyMode = false;
   String _selectedCity = 'Islamabad';
   String _searchQuery = '';
@@ -59,8 +68,12 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
   @override
   void initState() {
     super.initState();
-    _selectedType = widget.initialType;
-    _isEmergencyMode = widget.initialEmergencyMode || widget.initialType == FacilityType.emergency;
+    if (widget.initialType != null && allowedAssistanceTypes.contains(widget.initialType)) {
+      _selectedType = widget.initialType!;
+    } else {
+      _selectedType = FacilityType.emergency;
+    }
+    _isEmergencyMode = widget.initialEmergencyMode || _selectedType == FacilityType.emergency;
 
     _setupAnimations();
     _entranceCtrl.forward();
@@ -177,9 +190,27 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
       );
 
       final helplines = await helplinesFuture;
-      final facilities = await facilitiesFuture;
+      final rawFacilities = await facilitiesFuture;
 
       if (!mounted) return;
+
+      // Filter facilities to ensure only matching assistance type establishments are displayed
+      final facilities = rawFacilities.where((f) {
+        switch (_selectedType) {
+          case FacilityType.emergency:
+            return f.isEmergency || f.type == FacilityType.emergency;
+          case FacilityType.firstAid:
+            return f.type == FacilityType.firstAid;
+          case FacilityType.government:
+            return f.type == FacilityType.government;
+          case FacilityType.privateHospital:
+            return f.type == FacilityType.privateHospital;
+          case FacilityType.pharmacy:
+            return f.type == FacilityType.pharmacy;
+          default:
+            return true;
+        }
+      }).toList();
 
       setState(() {
         _helplines = helplines;
@@ -197,7 +228,7 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
       // Auto-retry once silently after 300ms before ever showing an error
       try {
         await Future.delayed(const Duration(milliseconds: 300));
-        final retryFacilities = await MedicalAssistanceService.getFacilities(
+        final retryRaw = await MedicalAssistanceService.getFacilities(
           type: _selectedType,
           city: _selectedCity,
           emergencyOnly: _isEmergencyMode,
@@ -207,6 +238,23 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
           searchLat: _searchCenterLat,
           searchLng: _searchCenterLng,
         );
+        final retryFacilities = retryRaw.where((f) {
+          switch (_selectedType) {
+            case FacilityType.emergency:
+              return f.isEmergency || f.type == FacilityType.emergency;
+            case FacilityType.firstAid:
+              return f.type == FacilityType.firstAid;
+            case FacilityType.government:
+              return f.type == FacilityType.government;
+            case FacilityType.privateHospital:
+              return f.type == FacilityType.privateHospital;
+            case FacilityType.pharmacy:
+              return f.type == FacilityType.pharmacy;
+            default:
+              return true;
+          }
+        }).toList();
+
         if (mounted) {
           setState(() {
             _facilities = retryFacilities;
@@ -229,16 +277,11 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
     }
   }
 
-  void _onCategorySelected(FacilityType? type) {
+  void _onCategorySelected(FacilityType type) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_selectedType == type && type != FacilityType.emergency) {
-        _selectedType = null;
-        _isEmergencyMode = false;
-      } else {
-        _selectedType = type;
-        _isEmergencyMode = (type == FacilityType.emergency);
-      }
+      _selectedType = type;
+      _isEmergencyMode = (type == FacilityType.emergency);
     });
     if (_hasSearched) {
       _loadData();
@@ -574,14 +617,15 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: facility.isEmergency
-                              ? [const Color(0xFFD32F2F), const Color(0xFF8B0000)]
-                              : [AppTheme.primary, const Color(0xFF42551A)],
+                          colors: [
+                            facility.type.color,
+                            Color.lerp(facility.type.color, Colors.black, 0.35) ?? facility.type.color,
+                          ],
                         ),
                         borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
-                            color: (facility.isEmergency ? Colors.redAccent : AppTheme.primary).withOpacity(0.35),
+                            color: facility.type.color.withOpacity(0.35),
                             blurRadius: 18,
                             offset: const Offset(0, 6),
                           ),
@@ -593,28 +637,51 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(facility.type.icon, color: Colors.white, size: 14),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(facility.type.icon, color: Colors.white, size: 14),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          facility.type.shortName.toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (facility.isEmergency && facility.type != FacilityType.emergency) ...[
                                     const SizedBox(width: 6),
-                                    Text(
-                                      facility.type.displayName.toUpperCase(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 0.6,
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.redAccent.withOpacity(0.4),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Text(
+                                        '24/7 ER',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
                                   ],
-                                ),
+                                ],
                               ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
@@ -1192,9 +1259,9 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
                 ),
               ],
             ),
-            if (_selectedType != null)
+            if (_selectedType != FacilityType.emergency)
               GestureDetector(
-                onTap: () => _onCategorySelected(null),
+                onTap: () => _onCategorySelected(FacilityType.emergency),
                 child: const Text(
                   'Reset Filter',
                   style: TextStyle(
@@ -1213,12 +1280,8 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
             color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: _selectedType == FacilityType.emergency
-                  ? Colors.redAccent.withOpacity(0.5)
-                  : (_selectedType != null
-                      ? AppTheme.primary.withOpacity(0.5)
-                      : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06))),
-              width: _selectedType != null ? 1.4 : 1.0,
+              color: _selectedType.color.withOpacity(0.5),
+              width: 1.4,
             ),
             boxShadow: [
               BoxShadow(
@@ -1229,74 +1292,50 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
             ],
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButton<FacilityType?>(
+            child: DropdownButton<FacilityType>(
               value: _selectedType,
               isExpanded: true,
               dropdownColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
               borderRadius: BorderRadius.circular(18),
               icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary),
-              items: [
-                DropdownMenuItem<FacilityType?>(
-                  value: null,
+              items: allowedAssistanceTypes.map((type) {
+                final isSelected = type == _selectedType;
+                return DropdownMenuItem<FacilityType>(
+                  value: type,
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: AppTheme.primary.withOpacity(0.12),
+                          color: type.color.withOpacity(0.14),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.medical_services_rounded, color: AppTheme.primary, size: 16),
+                        child: Icon(
+                          type.icon,
+                          color: type.color,
+                          size: 16,
+                        ),
                       ),
                       const SizedBox(width: 10),
-                      Text(
-                        'All Facilities & Services',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: onBg,
+                      Expanded(
+                        child: Text(
+                          type.displayName,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                            color: isSelected ? type.color : onBg,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                ...FacilityType.values.map((type) {
-                  final isEmergency = type == FacilityType.emergency;
-                  return DropdownMenuItem<FacilityType?>(
-                    value: type,
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: (isEmergency ? Colors.redAccent : type.color).withOpacity(0.14),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            type.icon,
-                            color: isEmergency ? Colors.redAccent : type.color,
-                            size: 16,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            type.displayName,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isEmergency ? Colors.redAccent : onBg,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
+                );
+              }).toList(),
               onChanged: (val) {
-                _onCategorySelected(val);
+                if (val != null) {
+                  _onCategorySelected(val);
+                }
               },
             ),
           ),
@@ -1773,7 +1812,7 @@ class _FirstAidHospitalsScreenState extends State<FirstAidHospitalsScreen>
             TextButton(
               onPressed: () {
                 _searchCtrl.clear();
-                _onCategorySelected(null);
+                _onCategorySelected(FacilityType.emergency);
                 _onCityChanged('All Locations');
               },
               child: const Text('Reset All Filters', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -1929,10 +1968,8 @@ class _FacilityCard extends StatelessWidget {
         color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: facility.isEmergency
-              ? Colors.redAccent.withOpacity(0.35)
-              : (isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05)),
-          width: facility.isEmergency ? 1.4 : 1.0,
+          color: (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
@@ -1957,31 +1994,61 @@ class _FacilityCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: (facility.isEmergency ? Colors.redAccent : facility.type.color).withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            facility.type.icon,
-                            size: 13,
-                            color: facility.isEmergency ? Colors.redAccent : facility.type.color,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: facility.type.color.withOpacity(0.14),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            facility.type.displayName,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              color: facility.isEmergency ? Colors.redAccent : facility.type.color,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                facility.type.icon,
+                                size: 13,
+                                color: facility.type.color,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                facility.type.shortName,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: facility.type.color,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (facility.isEmergency && facility.type != FacilityType.emergency) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.emergency_rounded, size: 11, color: Colors.redAccent),
+                                SizedBox(width: 3),
+                                Text(
+                                  '24/7 ER',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
                     Row(
                       children: [

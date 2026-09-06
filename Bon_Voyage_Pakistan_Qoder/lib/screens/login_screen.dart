@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
-import 'forgot_password_screen.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
 
@@ -85,13 +84,6 @@ class _LoginScreenState extends State<LoginScreen>
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SignupScreen()),
-    );
-  }
-
-  void _navigateToForgotPassword() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
     );
   }
 
@@ -239,22 +231,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   return null;
                                 },
                               ),
-                              const SizedBox(height: 10),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: _navigateToForgotPassword,
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: AppTheme.primary,
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: const Size(0, 36),
-                                  ),
-                                  child: const Text(
-                                    'Forgot Password?',
-                                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                  ),
-                                ),
-                              ),
+                              const SizedBox(height: 14),
                               if (_errorMessage != null) ...[
                                 const SizedBox(height: 12),
                                 _buildErrorBanner(),

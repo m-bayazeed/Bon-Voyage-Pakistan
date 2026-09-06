@@ -6,8 +6,6 @@ import '../services/trip_checklist_service.dart';
 import '../services/trip_history_service.dart';
 import '../theme/app_theme.dart';
 import 'ai_tour_planning_screen.dart';
-import 'food_dining_screen.dart';
-import 'hotels_screen.dart';
 
 /// Dedicated Plan-Aware Trip Checklist & Notes Screen.
 /// 
@@ -71,33 +69,6 @@ class _TripChecklistScreenState extends State<TripChecklistScreen> {
         .replaceAll('&gt;', '>')
         .replaceAll('&nbsp;', ' ')
         .trim();
-  }
-
-  void _handleItemTap(TripChecklistItem item) {
-    if (item.category == ChecklistCategory.hotel) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => HotelsScreen(initialCity: _activePlan?.destinationCity),
-        ),
-      );
-    } else if (item.category == ChecklistCategory.food) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => FoodDiningScreen(initialCity: _activePlan?.destinationCity),
-        ),
-      );
-    } else if (item.category == ChecklistCategory.plan) {
-      if (_activePlan != null) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AiTourPlanningScreen(initialPlan: _activePlan),
-          ),
-        );
-      }
-    }
   }
 
   @override
@@ -547,13 +518,15 @@ class _TripChecklistScreenState extends State<TripChecklistScreen> {
       ),
       onDismissed: (_) => TripChecklistService.removeItem(item.id),
       child: InkWell(
-        onTap: () => _handleItemTap(item),
+        // Do not redirect to any other page on clicking any item - toggle completion
+        onTap: () => TripChecklistService.toggleCompleted(item.id),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Circular Checkbox
+              // Circular Checkbox with Tickmark
               GestureDetector(
                 onTap: () => TripChecklistService.toggleCompleted(item.id),
                 child: Container(
@@ -561,62 +534,58 @@ class _TripChecklistScreenState extends State<TripChecklistScreen> {
                   height: 24,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isDone ? AppTheme.primary : Colors.transparent,
+                    color: isDone ? const Color(0xFF2E7D32) : Colors.transparent,
                     border: Border.all(
                       color: isDone
-                          ? AppTheme.primary
+                          ? const Color(0xFF2E7D32)
                           : (isDark ? Colors.white38 : Colors.black38),
                       width: 1.8,
                     ),
                   ),
                   child: isDone
-                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
                       : null,
                 ),
               ),
               const SizedBox(width: 12),
 
-              // Category Badge
+              // Category / Content Tag Badge (Places to Visit, Hotel, Food, or chatbot tag)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                 decoration: BoxDecoration(
                   color: item.originColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(
-                  item.originTag,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: item.originColor,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(item.originIcon, size: 11.5, color: item.originColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      item.originTag,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: item.originColor,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
 
-              // Title Text with Strikethrough if completed
+              // Title Text (Content NOT cut through - clear and readable)
               Expanded(
                 child: Text(
                   cleanTitle,
                   style: TextStyle(
                     fontSize: 13.5,
-                    fontWeight: isDone ? FontWeight.w500 : FontWeight.w600,
-                    color: isDone ? onVar.withValues(alpha: 0.6) : onSurface,
-                    decoration: isDone ? TextDecoration.lineThrough : null,
-                    decorationColor: onVar,
+                    fontWeight: FontWeight.w600,
+                    color: isDone ? onSurface.withValues(alpha: 0.85) : onSurface,
+                    decoration: null, // Just a tickmark; do not cut through the content!
                   ),
                 ),
               ),
-
-              // Navigation Arrow if entity reference
-              if (item.category != ChecklistCategory.task) ...[
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
-                  color: onVar.withValues(alpha: 0.5),
-                ),
-              ],
             ],
           ),
         ),

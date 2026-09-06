@@ -449,7 +449,6 @@ class _HotelRealMapMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final catColor = hotel.category.color;
-    final hasPrice = hotel.pricePerNightPkr != null && hotel.pricePerNightPkr! > 0;
 
     return GestureDetector(
       onTap: onTap,
@@ -476,9 +475,7 @@ class _HotelRealMapMarker extends StatelessWidget {
                 ],
               ),
               child: Text(
-                hasPrice
-                    ? 'PKR ${(hotel.pricePerNightPkr! / 1000).toStringAsFixed(0)}k'
-                    : hotel.distance,
+                hotel.distance.isNotEmpty ? hotel.distance : hotel.badgeLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -535,7 +532,6 @@ class _SelectedHotelQuickCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasRating = hotel.rating != null && hotel.rating! > 0;
-    final hasPrice = hotel.pricePerNightPkr != null && hotel.pricePerNightPkr! > 0;
 
     return GestureDetector(
       onTap: onTap,
@@ -639,39 +635,29 @@ class _SelectedHotelQuickCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Price badge or view badge
-            if (hasPrice)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  'PKR ${(hotel.pricePerNightPkr! / 1000).toStringAsFixed(0)}k',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  'View',
-                  style: TextStyle(
-                    color: AppTheme.primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+            // Clean View button
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.primary,
+                borderRadius: BorderRadius.circular(10),
               ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(width: 3),
+                  Icon(Icons.arrow_forward_ios_rounded, size: 10, color: Colors.white),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -686,14 +672,12 @@ class _MapControlBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool isDark;
-  final bool highlight;
   final String? tooltip;
 
   const _MapControlBtn({
     required this.icon,
     required this.onTap,
     required this.isDark,
-    this.highlight = false,
     this.tooltip,
   });
 
@@ -705,14 +689,10 @@ class _MapControlBtn extends StatelessWidget {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: highlight
-              ? AppTheme.primary
-              : (isDark ? AppTheme.darkSurface : Colors.white).withOpacity(0.92),
+          color: (isDark ? AppTheme.darkSurface : Colors.white).withOpacity(0.92),
           shape: BoxShape.circle,
           border: Border.all(
-            color: highlight
-                ? Colors.transparent
-                : (isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08)),
+            color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.08),
           ),
           boxShadow: [
             BoxShadow(
@@ -724,9 +704,7 @@ class _MapControlBtn extends StatelessWidget {
         child: Icon(
           icon,
           size: 17,
-          color: highlight
-              ? Colors.white
-              : (isDark ? Colors.white70 : Colors.black87),
+          color: isDark ? Colors.white70 : Colors.black87,
         ),
       ),
     );

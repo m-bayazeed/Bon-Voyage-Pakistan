@@ -338,13 +338,26 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
     _activeTripPlan = plan;
 
     final interestsStr = plan.interests.isNotEmpty ? plan.interests.join(', ') : 'Sightseeing & Culture';
-    final introText = introMessage ??
-        "Salam & welcome! 🇵🇰 I have prepared your personalized <b>${plan.days}-Day ${plan.destinationCity}</b> trip plan departing from <b>${plan.departingCity}</b> focusing on <b>$interestsStr</b>.\n\n"
-        "<b><u>Trip Overview:</u></b>\n"
-        "• <b>Route:</b> ${plan.departingCity} ➔ ${plan.destinationCity}\n"
-        "• <b>Duration:</b> ${plan.days} Days\n"
-        "• <b>Interests:</b> $interestsStr\n\n"
-        "You can chat with me to fine-tune spots, adjust pace, or add specific attractions. When you're ready, tap <b>Review Plan Summary & Finalize</b> below to review your detailed day-by-day itinerary and save your trip!";
+
+    final dayHighlights = plan.daysPlan.map((d) {
+      final topSpots = d.attractions.take(2).join(', ');
+      return "• <b>Day ${d.dayNumber}:</b> ${d.title}${topSpots.isNotEmpty ? ' – <i>$topSpots</i>' : ''}";
+    }).join("\n");
+
+    String introText;
+    if (introMessage != null && introMessage.contains('Day-by-Day')) {
+      introText = introMessage;
+    } else {
+      introText =
+          "Salam & welcome! 🇵🇰 I have prepared your personalized <b>${plan.days}-Day ${plan.destinationCity}</b> trip plan departing from <b>${plan.departingCity}</b> focusing on <b>$interestsStr</b>.\n\n"
+          "<b><u>Trip Overview:</u></b>\n"
+          "• <b>Route:</b> ${plan.departingCity} ➔ ${plan.destinationCity}\n"
+          "• <b>Duration:</b> ${plan.days} Days\n"
+          "• <b>Interests:</b> $interestsStr\n\n"
+          "<b><u>Day-by-Day Spots & Route Highlights:</u></b>\n"
+          "$dayHighlights\n\n"
+          "You can chat with me to fine-tune spots, adjust pace, or add specific attractions. When you're ready, tap <b>Review Plan Summary & Finalize</b> below to review full timings, routes, and meals, and save your trip!";
+    }
 
     _chatMessages.add(ChatMessage(
       id: 'ai-intro',
@@ -395,10 +408,10 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
           .trim();
 
       if (taskTitle.isNotEmpty) {
-        // Automatically add or offer confirmation
+        // Automatically add or offer confirmation with dynamic content-aware tag
         final added = await TripChecklistService.addItem(
           title: taskTitle,
-          category: ChecklistCategory.task,
+          customTag: TripChecklistItem.inferTagFromContent(taskTitle),
           dayNumber: dayNum,
           explicitPlanId: _activeTripPlan?.id,
         );
@@ -1790,7 +1803,7 @@ class _AiTourPlanningScreenState extends State<AiTourPlanningScreen>
                             onPressed: () async {
                               await TripChecklistService.addItem(
                                 title: msg.checklistActionTitle!,
-                                category: ChecklistCategory.task,
+                                customTag: TripChecklistItem.inferTagFromContent(msg.checklistActionTitle!),
                                 dayNumber: msg.checklistActionDayNumber,
                                 explicitPlanId: _activeTripPlan?.id,
                               );

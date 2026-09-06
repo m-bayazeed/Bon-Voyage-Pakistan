@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../config/api_config.dart';
 import '../models/hotel_model.dart';
 import '../services/hotel_location_service.dart';
 import '../services/hotel_navigation_service.dart';
@@ -207,12 +206,6 @@ class _HotelsScreenState extends State<HotelsScreen>
     });
   }
 
-  void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query;
-    });
-  }
-
   void _showLocationDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
@@ -398,7 +391,6 @@ class _HotelsScreenState extends State<HotelsScreen>
 
     final hasImage = hotel.imageUrl != null && hotel.imageUrl!.trim().isNotEmpty;
     final hasRating = hotel.rating != null && hotel.rating! > 0;
-    final hasPrice = hotel.formattedPrice != null;
 
     showModalBottomSheet(
       context: context,
@@ -447,7 +439,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                             ? Image.network(
                                 hotel.imageUrl!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (context, error, stackTrace) => Container(
                                   color: isDark
                                       ? AppTheme.darkSurfaceVariant
                                       : AppTheme.lightSurfaceVariant,
@@ -532,24 +524,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                             ],
                           ),
                         ),
-                        if (hasPrice) ...[
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(
-                              hotel.formattedPrice!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ],
+
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -586,7 +561,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                                 const Icon(Icons.star_rounded, color: Colors.amber, size: 15),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '${hotel.rating!.toStringAsFixed(1)}',
+                                  hotel.rating!.toStringAsFixed(1),
                                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
                                 ),
                               ],
@@ -989,7 +964,7 @@ class _HotelsScreenState extends State<HotelsScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          '"Discover premier mountain resorts, boutique lodges & heritage stays in Pakistan."',
+          '"Discover luxury hotels, resorts & retreats, boutique lodges & heritage stays in Pakistan."',
           style: TextStyle(
             color: onVar,
             fontSize: 13,
@@ -1002,102 +977,62 @@ class _HotelsScreenState extends State<HotelsScreen>
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 2. CATEGORY FILTER & SEARCH
+  // 2. CATEGORY FILTER
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildSearchAndFilters() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final onBg = isDark ? AppTheme.darkOnBackground : AppTheme.lightOnBackground;
-    final onVar = isDark ? AppTheme.darkOnSurfaceVariant : AppTheme.lightOnSurfaceVariant;
 
-    return Column(
-      children: [
-        // Text Search Field
-        Container(
-          height: 46,
-          decoration: BoxDecoration(
-            color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06),
-            ),
-          ),
-          child: TextField(
-            controller: _searchCtrl,
-            style: TextStyle(fontSize: 13, color: onBg),
-            decoration: InputDecoration(
-              hintText: 'Search keyword for $_selectedLocationName...',
-              hintStyle: TextStyle(fontSize: 12.5, color: onVar),
-              prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppTheme.primary),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
-                      onPressed: () {
-                        _searchCtrl.clear();
-                        _onSearchChanged('');
-                      },
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            onChanged: _onSearchChanged,
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _selectedCategory != HotelCategory.all
+              ? AppTheme.primary.withOpacity(0.5)
+              : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
+          width: _selectedCategory != HotelCategory.all ? 1.4 : 1.0,
         ),
-        const SizedBox(height: 12),
-
-        // Stay Category Filter Dropdown
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          decoration: BoxDecoration(
-            color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: _selectedCategory != HotelCategory.all
-                  ? AppTheme.primary.withOpacity(0.5)
-                  : (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
-              width: _selectedCategory != HotelCategory.all ? 1.4 : 1.0,
-            ),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<HotelCategory>(
-              value: _selectedCategory,
-              isExpanded: true,
-              dropdownColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-              borderRadius: BorderRadius.circular(16),
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary),
-              items: HotelCategory.values.map((cat) {
-                return DropdownMenuItem<HotelCategory>(
-                  value: cat,
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: cat.color.withOpacity(0.14),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(cat.icon, color: cat.color, size: 15),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        cat.displayName,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: onBg,
-                        ),
-                      ),
-                    ],
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<HotelCategory>(
+          value: _selectedCategory,
+          isExpanded: true,
+          dropdownColor: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+          borderRadius: BorderRadius.circular(16),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary),
+          items: HotelCategory.values.map((cat) {
+            return DropdownMenuItem<HotelCategory>(
+              value: cat,
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: cat.color.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(cat.icon, color: cat.color, size: 15),
                   ),
-                );
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) _onCategoryChanged(val);
-              },
-            ),
-          ),
+                  const SizedBox(width: 10),
+                  Text(
+                    cat.displayName,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: onBg,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) _onCategoryChanged(val);
+          },
         ),
-      ],
+      ),
     );
   }
 
@@ -1394,7 +1329,7 @@ class _HotelsScreenState extends State<HotelsScreen>
                 side: const BorderSide(color: AppTheme.primary),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Reset Category Filters'),
+              child: const Text('Reset All Filters'),
             ),
           ],
         ),

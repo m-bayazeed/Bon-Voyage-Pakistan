@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.13.0
+  sdk: '>=3.11.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -15,28 +15,42 @@ dependencies:
   shared_preferences: ^2.5.3
   camera: ^0.12.0+2
   image_picker: ^1.2.3
-  sqflite: ^2.4.3
+  sqflite: '<2.4.3'
   path: ^1.9.1
   path_provider: ^2.1.6
   permission_handler: ^11.3.1
-  record: ^7.1.1
+  record: '<7.1.1'
   audioplayers: ^6.1.0
   geolocator: ^13.0.2
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   url_launcher: ^6.3.1
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/logo.png
+    - assets/images/app_icon.png
     - assets/images/onboarding1.png
     - assets/images/onboarding2.png
     - assets/images/login_bg.png
     - assets/images/signup_bg.png
+    - assets/videos/
+

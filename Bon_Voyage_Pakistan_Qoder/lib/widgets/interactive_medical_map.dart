@@ -381,8 +381,7 @@ class _FacilityRealMapMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEmerg = facility.isEmergency;
-    final pinColor = isEmerg ? const Color(0xFFE53935) : facility.type.color;
+    final pinColor = facility.type.color;
 
     return GestureDetector(
       onTap: onTap,
@@ -419,7 +418,7 @@ class _FacilityRealMapMarker extends StatelessWidget {
                   ),
                   const SizedBox(width: 3),
                   Text(
-                    isEmerg ? '24/7 ER' : facility.type.shortName,
+                    facility.type.shortName,
                     style: TextStyle(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w800,
@@ -569,13 +568,12 @@ class _FacilityQuickPreviewCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: (facility.isEmergency ? const Color(0xFFE53935) : facility.type.color)
-                  .withValues(alpha: 0.15),
+              color: facility.type.color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
               facility.type.icon,
-              color: facility.isEmergency ? const Color(0xFFE53935) : facility.type.color,
+              color: facility.type.color,
               size: 24,
             ),
           ),
