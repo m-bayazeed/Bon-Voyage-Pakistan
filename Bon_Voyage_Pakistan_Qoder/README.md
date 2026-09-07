@@ -95,11 +95,10 @@ BVP bridges these on-ground travel requirements with modern edge and cloud AI:
 - **OpenWeatherMap Integration**: Live weather parameters (temperature, "feels like", humidity, wind speed, visibility, and sky conditions).
 - **Dynamic City Search**: Instant search bar supporting metropolitan cities and remote northern destinations (Islamabad, Lahore, Karachi, Hunza, Skardu, Gilgit, Swat/Kalam, Naran, Chitral, Gwadar, Ziarat, etc.).
 - **Situational Travel Advisory**: Evaluates meteorological conditions to surface road warnings (monsoon flash floods, snow blockages on Karakoram Highway/Babusar Pass, winter fog/smog).
-- **USGS Seismic Activity Feed**: Real-time seismic event tracking and earthquake alerts in Northern Pakistan.
 
 ### 4. 🏨 Stays & Accommodations Finder (Hotels)
 - **City-Specific Geocoding**: Search verified accommodations across major destinations without cross-city spillover.
-- **Real Hotel Photography**: Fetches authentic property images via Google Places API and OpenStreetMap Overpass with curated Pakistani fallback imagery.
+
 - **Rich Filtering**: Filter by star rating, property type (Hotel, Resort, Guest House), and amenities (Wi-Fi, Heating, Parking, Breakfast).
 - **Clean Aesthetic Cards**: Clutter-free design focusing on verified amenities, guest ratings, location, and direct waypoint map navigation.
 
@@ -257,7 +256,7 @@ sequenceDiagram
 | **Speech Synthesis** | [Microsoft Edge-TTS](https://github.com/rany2/edge-tts) | Neural voice synthesis (`ur-PK-UzmaNeural`, `en-US-JennyNeural`) |
 | **Live Weather** | [OpenWeatherMap API](https://openweathermap.org/) | Real-time weather parameters & travel situational hazards |
 | **Geospatial & Places** | Google Places & Routes API, Geoapify, OSM | POI search, bounding-box validation, route geometry |
-| **Safety Feeds** | USGS Earthquake Hazards API | Real-time seismic event tracking in Northern Pakistan |
+
 
 ---
 
@@ -285,13 +284,16 @@ Bon-Voyage-Pakistan/
     │   ├── config/
     │   │   └── api_config.dart                # Dynamic host resolution (ADB, Wi-Fi, Emulator)
     │   ├── models/                            # Strongly typed Dart models
-    │   │   ├── user_model.dart                # User profile & credentials
+    │   │   ├── user.dart                      # User profile & credentials
     │   │   ├── scan_item_model.dart           # Landmark scan item with things to do
     │   │   ├── hotel_model.dart               # Hotel details, star rating & amenities
     │   │   ├── food_place_model.dart          # Food places & verified specialties
     │   │   ├── medical_facility_model.dart    # Hospitals, pharmacies & emergency badges
     │   │   ├── weather_model.dart             # OpenWeatherMap data & road conditions
-    │   │   └── travel_alert_model.dart        # USGS seismic alerts & weather warnings
+    │   │   ├── travel_alert_model.dart        # USGS seismic alerts & weather warnings
+    │   │   ├── trip_plan_model.dart           # Structured multi-day itinerary model
+    │   │   ├── trip_checklist_item_model.dart # Smart packing checklist model
+    │   │   └── translation_model.dart         # Speech & text translation model
     │   ├── screens/                           # User Interface Views
     │   │   ├── splash_screen.dart             # Animated splash screen
     │   │   ├── onboarding_screen.dart         # Walkthrough & video hero
@@ -315,20 +317,28 @@ Bon-Voyage-Pakistan/
     │   │   ├── scan_history_service.dart      # Gemini scan API & SQLite cache
     │   │   ├── weather_service.dart           # OpenWeatherMap API client
     │   │   ├── hotel_service.dart             # Hotel search & location filter
+    │   │   ├── hotel_location_service.dart    # Geocoding & coordinate resolution
+    │   │   ├── hotel_navigation_service.dart  # Hotel polyline route handler
     │   │   ├── food_service.dart              # Food search & cuisine filter
+    │   │   ├── food_navigation_service.dart   # Restaurant routing & navigation
     │   │   ├── medical_assistance_service.dart# Medical search & category filter
     │   │   ├── translation_service.dart       # Groq Whisper STT & Edge-TTS
+    │   │   ├── translation_history_service.dart# Local translation history store
+    │   │   ├── translator_audio_handler.dart  # Speech recorder & audio player handler
     │   │   ├── travel_alert_service.dart      # USGS earthquake & advisory sync
-    │   │   └── trip_api_service.dart          # Groq LLM tour planning & chat
+    │   │   ├── trip_api_service.dart          # Groq LLM tour planning & chat
+    │   │   ├── trip_checklist_service.dart    # Packing checklist persistent store
+    │   │   └── trip_history_service.dart      # Saved trip itineraries manager
     │   ├── theme/                             # Emerald & slate design tokens
-    │   └── widgets/                           # Reusable UI components & map sheets
+    │   └── widgets/                           # Reusable UI components & interactive maps
     │
     ├── backend/                               # Python Backend Architecture
     │   ├── app.py                             # Flask Core Server (Port 5000)
     │   ├── database.py                        # SQLite user database handler
     │   ├── trip_planner.py                    # Groq AI Tour Planning engine
     │   ├── requirements.txt                   # Backend dependencies
-    │   ├── .env                               # Environment variables & API keys
+    │   ├── .env.example                       # Backend environment template
+    │   ├── test_*.py                          # Comprehensive Python test suites
     │   │
     │   └── app/                               # FastAPI Async Microservices (Port 8000)
     │       ├── main.py                        # FastAPI application entry point
@@ -342,13 +352,18 @@ Bon-Voyage-Pakistan/
     │       │   ├── landmarks.py               # Gemini Vision landmark routes
     │       │   ├── weather.py                 # OpenWeatherMap weather routes
     │       │   └── notifications.py           # USGS & weather advisory feed
-    │       └── services/                      # Background service implementations
-    │           ├── landmark_service.py        # Gemini vision prompt & TTS caller
-    │           ├── weather_service.py         # OpenWeatherMap client & road hazard logic
-    │           ├── hotel_service.py           # Places & Overpass hotel finder
-    │           ├── food_service.py            # Places restaurant finder
-    │           ├── google_places_service.py   # Google Places API wrapper
-    │           └── tts_service.py             # Microsoft Edge-TTS wrapper
+    │       ├── models/                        # Pydantic schema definitions
+    │       ├── services/                      # Background service implementations
+    │       │   ├── landmark_service.py        # Gemini vision prompt & TTS caller
+    │       │   ├── weather_service.py         # OpenWeatherMap client & road hazard logic
+    │       │   ├── hotel_service.py           # Places & Overpass hotel finder
+    │       │   ├── food_service.py            # Places restaurant finder
+    │       │   ├── google_places_service.py   # Google Places API wrapper
+    │       │   ├── google_routes_service.py   # Route matrix & polyline computation
+    │       │   ├── geoapify_service.py        # Geoapify fallback POI queries
+    │       │   ├── notification_sync_service.py # USGS earthquake background sync
+    │       │   └── tts_service.py             # Microsoft Edge-TTS wrapper
+    │       └── utils/geo.py                   # Geographic bounding boxes & math
     │
     └── android/                               # Native Android configuration
         └── app/src/main/res/                  # App launcher icons & resources
@@ -410,15 +425,19 @@ Bon-Voyage-Pakistan/
    cd Bon_Voyage_Pakistan_Qoder\backend
    ```
 
-2. Create `.env` file from the provided template (if not already present):
+2. Create `.env` file from the provided `.env.example` template:
    ```powershell
-   Copy-Item env .env
+   Copy-Item .env.example .env
+   # Or on macOS/Linux:
+   # cp .env.example .env
    ```
 
 3. Create and activate a Python virtual environment:
    ```powershell
    python -m venv venv
    .\venv\Scripts\Activate.ps1
+   # Or on macOS/Linux:
+   # source venv/bin/activate
    ```
 
 4. Install required dependencies:
@@ -496,14 +515,14 @@ Key backend configurations and API credentials are maintained in `backend/.env`:
 
 | Key | Description | Example / Note |
 | :--- | :--- | :--- |
-| `SECRET_KEY` | JWT signing secret for auth tokens | `bvp-super-secret-key-2026` |
+| `SECRET_KEY` | JWT signing secret for auth tokens | `your_jwt_secret_key_here` |
 | `JWT_EXPIRATION_HOURS` | Token validity duration | `24` |
-| `GROQ_API_KEY` | Groq AI Cloud API Key (LLM & Whisper) | `gsk_...` |
-| `GEMINI_API_KEY` | Google Gemini Vision API Key | `AIzaSy...` |
-| `OPENWEATHER_API_KEY` | OpenWeatherMap API Key for live weather | `28e469...` |
-| `GOOGLE_PLACES_API_KEY`| Google Places (New) API Key | `AIzaSy...` |
-| `GOOGLE_ROUTES_API_KEY`| Google Directions / Routes API Key | `AIzaSy...` |
-| `GEOAPIFY_API_KEY` | Geoapify POI search API Key | `454af5...` |
+| `GROQ_API_KEY` | Groq AI Cloud API Key (LLM & Whisper) | `your_groq_api_key_here` |
+| `GEMINI_API_KEY` | Google Gemini Vision API Key | `your_gemini_api_key_here` |
+| `OPENWEATHER_API_KEY` | OpenWeatherMap API Key for live weather | `your_openweather_api_key_here` |
+| `GOOGLE_PLACES_API_KEY`| Google Places (New) API Key | `your_places_api_key_here` |
+| `GOOGLE_ROUTES_API_KEY`| Google Directions / Routes API Key | `your_routes_api_key_here` |
+| `GEOAPIFY_API_KEY` | Geoapify POI search API Key | `your_geoapify_api_key_here` |
 | `CORS_ORIGINS` | Allowed cross-origin domains | `*` |
 
 ---
